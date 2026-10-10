@@ -1,0 +1,44 @@
+{
+  "id": "awesome-vtt-core",
+  "title": "Awesome VTT – Core",
+  "description": "Shared code (dnd5e and Shadow of the Demon Lord adapters) for Awesome VTT (table mode) and Awesome VTT – Phone Companion: dnd5e character data, rolls and action checks, the compact sheet, quick actions and automation prompts, the dice pool, the compendium and journal panels, chat and notice helpers, and keeping the screen on. It does nothing on its own.",
+  "version": "0.12.0",
+  "library": true,
+  "authors": [
+    {
+      "name": "Stefano Pignataro"
+    }
+  ],
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "6.0.0",
+          "verified": "6.0.5"
+        }
+      },
+      {
+        "id": "demonlord",
+        "type": "system",
+        "compatibility": {
+          "minimum": "6.1.0",
+          "verified": "6.1.11"
+        }
+      }
+    ]
+  },
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "socket": true
+}

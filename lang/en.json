@@ -1,0 +1,93 @@
+{
+  "AVTTC": {
+    "Sheet": {
+      "Favorites": "Favorites",
+      "Weapons": "Equipped weapons",
+      "Features": "Features",
+      "Consumables": "Consumables",
+      "PactSlots": "Pact slots"
+    },
+    "Prompt": {
+      "Concentration": {
+        "Title": "Concentration check",
+        "Text": "{name} took damage while concentrating. Roll a Constitution saving throw (DC {dc}) to keep concentrating.",
+        "Roll": "Roll concentration save (DC {dc})"
+      },
+      "Save": {
+        "Title": "Saving throw",
+        "Text": "{source} calls for a saving throw from {name}.",
+        "Roll": "Roll {ability} save",
+        "RollDC": "Roll {ability} save (DC {dc})"
+      },
+      "Request": {
+        "Title": "Request from the GM",
+        "Text": "The GM asks {name}: {request}.",
+        "Go": "Take part"
+      },
+      "Initiative": {
+        "Title": "Roll initiative",
+        "Text": "Combat: roll initiative for {names}.",
+        "Roll": "Roll initiative"
+      },
+      "DeathSave": {
+        "Title": "Death saving throw",
+        "Text": "{name} is dying. Roll a death saving throw.",
+        "Roll": "Roll death save"
+      },
+      "Challenge": {
+        "Title": "Challenge roll",
+        "Text": "The GM asks {name} for a {attribute} challenge roll.",
+        "TextBoons": "The GM asks {name} for a {attribute} challenge roll, with {boons}.",
+        "Roll": "Roll {attribute}"
+      },
+      "Turn": {
+        "Title": "Fast or slow turn?",
+        "Text": "Combat: choose a fast or slow turn for {names}."
+      }
+    },
+    "Stat": {
+      "ac": "Armor Class",
+      "init": "Initiative bonus",
+      "speed": "Walking speed"
+    },
+    "Rest": {
+      "short": "Short rest",
+      "long": "Long rest",
+      "night": "Rest (8 hours)",
+      "day": "Full day's rest (24 hours)"
+    },
+    "Boons": {
+      "none": "No boons or banes",
+      "boon": "{n} boon",
+      "boons": "{n} boons",
+      "bane": "{n} bane",
+      "banes": "{n} banes"
+    },
+    "Roll": {
+      "challenge": "Challenge"
+    },
+    "Turn": {
+      "fast": "Fast turn",
+      "slow": "Slow turn",
+      "label": "Turn"
+    },
+    "DL": {
+      "Weapons": "Weapons in hand",
+      "Spells": "Spells",
+      "NoTradition": "Other",
+      "TraditionRank": "{tradition} · rank {rank}",
+      "Coin": {
+        "gc": "Gold crowns",
+        "ss": "Silver shillings",
+        "cp": "Copper pennies",
+        "bits": "Bits"
+      },
+      "CoinShort": {
+        "gc": "gc",
+        "ss": "ss",
+        "cp": "cp",
+        "bits": "bits"
+      }
+    }
+  }
+}
