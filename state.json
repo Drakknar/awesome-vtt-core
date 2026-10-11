@@ -1,4 +1,5 @@
 {
   "foundry:last": "14.369",
-  "system:dnd5e:6.0.6": "done:2026-10-11"
+  "system:dnd5e:6.0.6": "done:2026-10-11",
+  "system:from:dnd5e:6.0.6": "6.0.5"
 }
