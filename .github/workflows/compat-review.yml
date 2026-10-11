@@ -1,0 +1,219 @@
+name: Compatibility review
+
+# Daily check for new releases of the game systems in module.json and of
+# Foundry VTT core. Each new version is reviewed once by Claude: if the module
+# is fine it proposes a pull request that bumps "verified", a fix comes as a pull
+# request, anything that needs you as an issue, and new features worth using as
+# an "enhancement" issue. What has been reviewed is kept on the watch-state branch.
+on:
+  schedule:
+    - cron: "7 6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Review the latest versions even if already reviewed
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compat-review
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # first-run baselines go to the watch-state branch
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+      keys: ${{ steps.detect.outputs.keys }}
+      subject: ${{ steps.detect.outputs.subject }}
+      context: ${{ steps.detect.outputs.context }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find new versions
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force || 'false' }}
+        run: |
+          set -euo pipefail
+          w() { bash .github/scripts/watch.sh "$@"; }
+          due() { [ "$FORCE" = true ] || [ "$(w should-run "$1")" = true ]; }
+          ctx=$RUNNER_TEMP/watch-context.md
+          : > "$ctx"
+          keys=()
+          subjects=()
+
+          # Game systems: a release newer than the version module.json verifies.
+          while IFS=$'\t' read -r id verified minimum; do
+            case "$id" in
+              dnd5e) src=foundryvtt/dnd5e prefix=release- ;;
+              demonlord) src=Xacus/demonlord prefix= ;;
+              *) echo "::warning::No release source known for system $id"; continue ;;
+            esac
+            tag=$(gh api "repos/$src/releases/latest" --jq .tag_name)
+            ver=${tag#"$prefix"}
+            newest=$(printf '%s\n%s\n' "$verified" "$ver" | sort -V | tail -n1)
+            if [ "$ver" != "$verified" ] && [ "$newest" = "$ver" ] && due "system:$id:$ver"; then
+              keys+=("system:$id:$ver=@")
+              subjects+=("$id $ver")
+              cat >> "$ctx" <<CTX
+          ## Game system: $id
+          - module.json: minimum $minimum, verified $verified. New release: $ver.
+          - Release notes: https://github.com/$src/releases/tag/$tag (and those of any releases in between)
+          - Source: https://github.com/$src/compare/$prefix$verified...$tag
+
+          CTX
+            fi
+          done < <(jq -r '.relationships.systems[]? | [.id, .compatibility.verified // .compatibility.minimum // "0", .compatibility.minimum // "0"] | @tsv' module.json)
+
+          # Foundry core: Stable builds only. A new generation gets a full review;
+          # a new build of the verified generation a light one (release notes).
+          stable=$(curl -fsSL --retry 3 https://foundryvtt.com/releases/ | python3 -c '
+          import re, sys
+          best = None
+          for part in sys.stdin.read().split("<li class=\"article release")[1:]:
+              part = part.split("</li>")[0]
+              m = re.search(r"/releases/(\d+)\.(\d+)", part)
+              if m and "release-tag stable" in part:
+                  v = (int(m.group(1)), int(m.group(2)))
+                  best = max(best or v, v)
+          print("%d.%d" % best if best else "")
+          ' || true)
+          if [ -z "$stable" ]; then
+            echo "::warning::Could not read the Foundry VTT release list"
+          else
+            gen=${stable%%.*}
+            vgen=$(jq -r '.compatibility.verified // .compatibility.minimum' module.json | cut -d. -f1)
+            last=$(w get foundry:last)
+            if [ "$gen" -gt "$vgen" ]; then
+              if due "foundry:$stable"; then
+                keys+=("foundry:$stable=@" "foundry:last=$stable")
+                subjects+=("Foundry VTT $stable")
+                cat >> "$ctx" <<CTX
+          ## Foundry VTT core: full review
+          - module.json verifies generation $vgen. Generation $gen is now Stable (build $stable).
+          - Release notes: https://foundryvtt.com/releases/ (every $gen.x build, above all the API and breaking-change sections)
+          - API documentation: https://foundryvtt.com/api/v$gen/
+
+          CTX
+              fi
+            elif [ -z "$last" ]; then
+              w set "foundry:last=$stable" # first run: only record where we start
+            elif [ "$last" != "$stable" ] && due "foundry:$stable"; then
+              keys+=("foundry:$stable=@" "foundry:last=$stable")
+              subjects+=("Foundry VTT $stable")
+              cat >> "$ctx" <<CTX
+          ## Foundry VTT core: light review
+          - New Stable build in the verified generation: $last to $stable.
+          - Release notes: https://foundryvtt.com/releases/$stable (and any builds between $last and $stable)
+
+          CTX
+            fi
+          fi
+
+          if [ ${#keys[@]} -eq 0 ]; then
+            echo "Nothing new to review."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          subject=$(printf '%s, ' "${subjects[@]}")
+          subject=${subject%, }
+          echo "Reviewing: $subject"
+          {
+            echo "run=true"
+            echo "keys=${keys[*]}"
+            echo "subject=$subject"
+            echo "context<<CTX_EOF"
+            echo "# Review: $subject"
+            echo
+            cat "$ctx"
+            echo "CTX_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  review:
+    needs: detect
+    if: needs.detect.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Write context
+        env:
+          CONTEXT: ${{ needs.detect.outputs.context }}
+        run: printf '%s\n' "$CONTEXT" > "$RUNNER_TEMP/watch-context.md"
+
+      - name: Claude
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: >-
+            Follow the instructions in .github/prompts/foundry-compat.md.
+            The facts for this run are in ${{ runner.temp }}/watch-context.md.
+          claude_args: >-
+            --model opus
+            --max-turns 120
+            --allowedTools "Bash,Read,Edit,Write,Glob,Grep,WebFetch,WebSearch,TodoWrite"
+            --json-schema '{"type":"object","properties":{"status":{"type":"string","enum":["clear","fixed","needs_attention","transient"]},"title":{"type":"string"},"report":{"type":"string"},"improvements":{"type":"string"}},"required":["status","title","report","improvements"]}'
+
+      # Only the verdict and a diff of the working tree leave this job. The
+      # report job, which can write, turns them into a pull request or issues.
+      - name: Collect result
+        if: always()
+        env:
+          VERDICT: ${{ steps.claude.outputs.structured_output }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/watch"
+          printf '%s' "$VERDICT" > "$RUNNER_TEMP/watch/verdict.json"
+          git add -A
+          git diff --cached --binary "$GITHUB_SHA" -- . ':(exclude).github' > "$RUNNER_TEMP/watch/changes.patch"
+          git diff --cached --stat "$GITHUB_SHA" -- . ':(exclude).github'
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: watch
+          path: ${{ runner.temp }}/watch/
+          retention-days: 14
+
+  report:
+    needs: [detect, review]
+    if: always() && needs.review.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: watch
+          path: ${{ runner.temp }}/watch
+
+      - name: Open pull request / issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WATCH_KEYS: ${{ needs.detect.outputs.keys }}
+          WATCH_SUBJECT: ${{ needs.detect.outputs.subject }}
+          WATCH_BRANCH: claude/compat-${{ github.run_number }}
+        run: bash .github/scripts/watch.sh report "$RUNNER_TEMP/watch"

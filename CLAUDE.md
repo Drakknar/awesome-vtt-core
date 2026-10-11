@@ -21,3 +21,16 @@ Library module (`"library": true`) holding the code shared by `../awesome-vtt` (
 - **Checks after edits:** `node --check`, JSON validation, and resolving every relative import from the two modules.
 - **Foundry v14 source:** in `/Volumes/appdata/foundry-vtt/data/container_cache/`. **dnd5e source:** `../../systems/dnd5e/dnd5e.mjs`.
 - **System differences outside the adapters (2026-10-04):** item descriptions are `system.description.value` in dnd5e but an HTML string `system.description` in SotDL (compendium preview handles both). `markSystem()` (system.mjs, called at init by both modules) sets `<body data-avtt-system="…">`; the modules' CSS gives chat messages a light card in non-dnd5e worlds, because only dnd5e restyles Foundry's messages for the dark theme (SotDL rolls were dark text on the dark panel; checked with a headless Chrome probe).
+
+## Upstream watch
+
+`.github/workflows/compat-review.yml` runs daily and has Claude review this module once for each new version of a dependency, following `.github/prompts/foundry-compat.md`.
+- **Game systems:** a release of a system in `relationships.systems` newer than its `verified` version.
+- **Foundry core:** a new Stable build, with a light review within the verified generation and a full review for a new generation.
+- **Results:**
+  - The module is fine: a pull request that bumps `verified`. It goes out with the next manual release.
+  - A fix: a pull request.
+  - Anything that needs the owner: an issue labelled `upstream-watch` and assigned to the owner.
+  - New features worth using: an `enhancement` issue.
+- **Access:** Claude works with read-only access (secret `CLAUDE_CODE_OAUTH_TOKEN`). A separate job opens the pull request and issues.
+- **Bookkeeping:** `.github/scripts/watch.sh` records what was reviewed on the `watch-state` branch. Run the workflow by hand with `force` to review again.
