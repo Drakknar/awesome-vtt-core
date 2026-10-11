@@ -11,7 +11,10 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: Review the latest versions even if already reviewed
+        description: >-
+          Repeat reviews already done for the current versions (each covers the
+          same range as the first time; a version only recorded as the starting
+          point has nothing to compare with)
         type: boolean
         default: false
 
@@ -42,7 +45,7 @@ jobs:
           FORCE: ${{ inputs.force || 'false' }}
         run: |
           set -euo pipefail
-          w() { bash .github/scripts/watch.sh "$@"; }
+          w() { bash .github/scripts/watch.sh "$@" </dev/null; }
           due() { [ "$FORCE" = true ] || [ "$(w should-run "$1")" = true ]; }
           ctx=$RUNNER_TEMP/watch-context.md
           : > "$ctx"
@@ -56,17 +59,21 @@ jobs:
               demonlord) src=Xacus/demonlord prefix= ;;
               *) echo "::warning::No release source known for system $id"; continue ;;
             esac
-            tag=$(gh api "repos/$src/releases/latest" --jq .tag_name)
+            tag=$(gh api "repos/$src/releases/latest" --jq .tag_name </dev/null)
             ver=${tag#"$prefix"}
-            newest=$(printf '%s\n%s\n' "$verified" "$ver" | sort -V | tail -n1)
-            if [ "$ver" != "$verified" ] && [ "$newest" = "$ver" ] && due "system:$id:$ver"; then
-              keys+=("system:$id:$ver=@")
+            # Normally from the verified version. Once a reviewed version is
+            # verified, a repeat (force) covers the same range again.
+            from=$verified
+            [ "$ver" != "$verified" ] || from=$(w get "system:from:$id:$ver")
+            newest=$(printf '%s\n%s\n' "$from" "$ver" | sort -V | tail -n1)
+            if [ -n "$from" ] && [ "$from" != "$ver" ] && [ "$newest" = "$ver" ] && due "system:$id:$ver"; then
+              keys+=("system:$id:$ver=@" "system:from:$id:$ver=$from")
               subjects+=("$id $ver")
               cat >> "$ctx" <<CTX
           ## Game system: $id
-          - module.json: minimum $minimum, verified $verified. New release: $ver.
+          - module.json: minimum $minimum, verified $verified. Review from $from to the new release $ver.
           - Release notes: https://github.com/$src/releases/tag/$tag (and those of any releases in between)
-          - Source: https://github.com/$src/compare/$prefix$verified...$tag
+          - Source: https://github.com/$src/compare/$prefix$from...$tag
 
           CTX
             fi
@@ -105,15 +112,19 @@ jobs:
               fi
             elif [ -z "$last" ]; then
               w set "foundry:last=$stable" # first run: only record where we start
-            elif [ "$last" != "$stable" ] && due "foundry:$stable"; then
-              keys+=("foundry:$stable=@" "foundry:last=$stable")
-              subjects+=("Foundry VTT $stable")
-              cat >> "$ctx" <<CTX
+            else
+              # Already reviewed: a repeat (force) covers the same range again.
+              [ "$last" != "$stable" ] || last=$(w get "foundry:from:$stable")
+              if [ -n "$last" ] && due "foundry:$stable"; then
+                keys+=("foundry:$stable=@" "foundry:from:$stable=$last" "foundry:last=$stable")
+                subjects+=("Foundry VTT $stable")
+                cat >> "$ctx" <<CTX
           ## Foundry VTT core: light review
           - New Stable build in the verified generation: $last to $stable.
           - Release notes: https://foundryvtt.com/releases/$stable (and any builds between $last and $stable)
 
           CTX
+              fi
             fi
           fi
 
@@ -194,6 +205,7 @@ jobs:
     needs: [detect, review]
     if: always() && needs.review.result != 'skipped'
     runs-on: ubuntu-latest
+    timeout-minutes: 75 # includes waiting for the check on a proposed fix
     permissions:
       contents: write
       issues: write
