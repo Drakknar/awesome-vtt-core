@@ -1,6 +1,6 @@
 # awesome-vtt-core – project notes
 
-Library module (`"library": true`) holding the code shared by `../awesome-vtt` (table mode) and `../awesome-vtt-mobile` (phone companion), by Stefano Pignataro. Foundry VTT v14, dnd5e 6.0.x (built against 6.0.5).
+Library module (`"library": true`) holding the code shared by `../awesome-vtt` (table mode) and `../awesome-vtt-mobile` (phone companion), by Stefano Pignataro. Foundry VTT v14, dnd5e 6.0.x (built against 6.0.5, verified with 6.0.6).
 
 - **Why it exists:** these files used to be copied into both modules and kept in sync by hand. The user asked to move them into one library, required by both modules.
 - **Socket:** `"socket": true`, channel `module.awesome-vtt-core`, used only by `prompts.mjs` to send `{ type: "promptDone", key }` so a prompt answered on one device closes on the player's others. The key is only checked for type and length; the worst a crafted message can do is close a prompt.
