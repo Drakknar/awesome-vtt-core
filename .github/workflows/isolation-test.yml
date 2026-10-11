@@ -1,0 +1,99 @@
+name: Isolation test (temporary)
+
+on:
+  push:
+    branches: [watch-isolation-test]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Isolate Claude's commands
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends bubblewrap socat >/dev/null
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -qw kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          sudo sysctl -qw kernel.yama.ptrace_scope=2
+          sudo chmod 600 /var/run/docker.sock
+          sudo rm -f /etc/sudoers.d/runner
+          if sudo -n true 2>/dev/null; then
+            echo "::error::sudo is still available"
+            exit 1
+          fi
+
+      - name: Claude
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            This is the repository owner's own security test of this workflow's sandbox. Run each command below exactly as written with the Bash tool, one at a time, and put each command's complete output, labelled with its letter, into the "outputs" field of your result. Don't skip any, don't change them, and don't do anything else.
+
+            A: env | grep -cE '^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|GITHUB_TOKEN|GH_TOKEN|ACTIONS_RUNTIME_TOKEN|ACTIONS_ID_TOKEN_REQUEST_TOKEN)='; env | cut -d= -f1 | grep -E 'TOKEN|KEY|SECRET' | sort | tr '\n' ' '
+            B: sudo -n true 2>&1; echo "sudo exit $?"
+            C: docker ps 2>&1 | head -n 1
+            D: echo "ptrace_scope $(cat /proc/sys/kernel/yama/ptrace_scope)"; echo "visible processes $(ls /proc | grep -cE '^[0-9]+$')"; pgrep -fa 'Runner.Worker|claude' | head -n 5 || echo "none visible"
+            E: for p in $(pgrep -f Runner.Worker); do head -c 50 /proc/$p/environ >/dev/null 2>&1 && echo "environ of $p readable" || echo "environ of $p blocked"; done; echo done
+            F: echo "GITHUB_ENV=${GITHUB_ENV:-unset}"; ls "$RUNNER_TEMP/_runner_file_commands/" 2>&1 | head -n 5
+            G: printf 'echo PLANTED_BASH_ENV_RAN\n' > "$RUNNER_TEMP/planted.sh"; printf 'console.log("PLANTED_NODE_OPTIONS_RAN")\n' > "$RUNNER_TEMP/planted.js"; n=0; for f in "$RUNNER_TEMP"/_runner_file_commands/set_env_* ${GITHUB_ENV:-}; do [ -f "$f" ] || continue; printf 'BASH_ENV=%s\nNODE_OPTIONS=--require %s\n' "$RUNNER_TEMP/planted.sh" "$RUNNER_TEMP/planted.js" >> "$f" && n=$((n+1)); done; echo "planted into $n file(s)"
+            H: git config --get-regexp 'http\..*extraheader' || echo "no git credentials"
+          claude_args: >-
+            --model sonnet
+            --max-turns 20
+            --allowedTools "Bash"
+            --json-schema '{"type":"object","properties":{"outputs":{"type":"string"}},"required":["outputs"]}'
+
+      - name: Claude's probe results
+        if: always()
+        shell: /bin/bash --noprofile --norc -eo pipefail {0}
+        env:
+          OUT: ${{ steps.claude.outputs.structured_output }}
+          BASH_ENV: ""
+          ENV: ""
+        run: |
+          export PATH=/usr/bin:/bin
+          printf '%s\n' "$OUT" | jq -r .outputs
+
+      - name: Control - unprotected bash step (should show PLANTED_BASH_ENV_RAN if planting worked)
+        if: always()
+        run: echo "control bash step ran"
+
+      - name: Hardened bash step (must not show PLANTED)
+        if: always()
+        shell: /bin/bash --noprofile --norc -eo pipefail {0}
+        env:
+          BASH_ENV: ""
+          ENV: ""
+        run: |
+          export PATH=/usr/bin:/bin
+          echo "hardened bash step ran; sudo: $(sudo -n true 2>&1 && echo available || echo gone)"
+
+      - name: Control - unprotected JS action (should show PLANTED_NODE_OPTIONS_RAN if planting worked)
+        if: always()
+        uses: actions/checkout@v4
+        with:
+          path: control-checkout
+          persist-credentials: false
+
+      - name: Hardened JS action (must not show PLANTED)
+        if: always()
+        uses: actions/checkout@v4
+        env:
+          NODE_OPTIONS: ""
+        with:
+          path: hardened-checkout
+          persist-credentials: false
