@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Self-check of the sandbox around Claude's commands in the upstream-watch
-# workflows. Prints only yes/no answers and counts, never a value.
+# workflows. Prints yes/no answers, counts and variable names, never a value.
 yn() { if "$@" >/dev/null 2>&1; then echo yes; else echo no; fi; }
 echo "Claude token in this command's environment: $([ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && echo yes || echo no)"
-echo "Variables with TOKEN in the name: $(env | cut -d= -f1 | grep -c TOKEN)"
+echo "Variables with TOKEN in the name: $(env | cut -d= -f1 | grep TOKEN | sort | tr "
+" " ") (names only)"
+echo "  of which non-empty: $(env | grep -E "^[A-Z_]*TOKEN[A-Z_]*=." | cut -d= -f1 | sort | tr "
+" " ")"
 echo "GITHUB_ENV set: $([ -n "${GITHUB_ENV:-}" ] && echo yes || echo no)"
 echo "Runner file-command directory listable: $(yn ls "${RUNNER_TEMP:-/home/runner/work/_temp}/_runner_file_commands")"
 echo "sudo works: $(yn sudo -n true)"
@@ -13,6 +16,7 @@ echo "Processes visible: $(ls /proc | grep -cE '^[0-9]+$')"
 echo "Runner.Worker visible: $(pgrep -f Runner.Worker >/dev/null && echo yes || echo no)"
 n=0
 for p in /proc/[0-9]*; do
+	[ -r "$p/environ" ] || continue
 	tr '\0' '\n' <"$p/environ" 2>/dev/null | grep -q '^CLAUDE_CODE_OAUTH_TOKEN=' && n=$((n + 1))
 done
 echo "Visible processes whose environment holds the Claude token: $n"

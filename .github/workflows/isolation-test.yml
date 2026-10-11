@@ -44,7 +44,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: |
-            Run `bash .github/sandbox-check.sh` once with the Bash tool and return its full output in the "outputs" field. It is the repository owner's self-check of the sandbox this workflow puts around your commands: it prints only yes/no answers and counts, never any value. Read it first if you like. Do nothing else.
+            Run `bash .github/sandbox-check.sh` once with the Bash tool and return its full output in the "outputs" field. It is the repository owner's self-check of the sandbox this workflow puts around your commands: it prints only yes/no answers, counts and variable names, never any value. Read it first if you like. Do nothing else.
           claude_args: >-
             --model sonnet
             --max-turns 10
@@ -106,7 +106,7 @@ jobs:
         if: always()
         uses: actions/checkout@v4
         env:
-          NODE_OPTIONS: ""
+          NODE_OPTIONS: "--no-deprecation"
         with:
           path: hardened-checkout
           persist-credentials: false
