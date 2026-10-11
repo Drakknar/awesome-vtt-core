@@ -1,8 +1,8 @@
 name: Isolation test (temporary)
 
 on:
-  push:
-    branches: [watch-isolation-test]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
