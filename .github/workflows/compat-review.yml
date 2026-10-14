@@ -2,9 +2,10 @@ name: Compatibility review
 
 # Daily check for new releases of the game systems in module.json and of
 # Foundry VTT core. Each new version is reviewed once by Claude: if the module
-# is fine it proposes a pull request that bumps "verified", a fix comes as a pull
-# request, anything that needs you as an issue, and new features worth using as
-# an "enhancement" issue. What has been reviewed is kept on the watch-state branch.
+# is fine a pull request bumps "verified" and is merged automatically (the script
+# checks that nothing else changed), a fix comes as a pull request, anything that
+# needs you as an issue, and new features worth using as an "enhancement" issue.
+# What has been reviewed is kept on the watch-state branch.
 on:
   schedule:
     - cron: "7 6 * * *"
@@ -282,6 +283,7 @@ jobs:
           WATCH_KEYS: ${{ needs.detect.outputs.keys }}
           WATCH_SUBJECT: ${{ needs.detect.outputs.subject }}
           WATCH_BRANCH: claude/compat-${{ github.run_number }}
+          WATCH_CLEAR_POLICY: strict
         run: bash .github/scripts/watch.sh report "$RUNNER_TEMP/watch"
 
       # Artifacts of public repositories can be downloaded by anyone signed in

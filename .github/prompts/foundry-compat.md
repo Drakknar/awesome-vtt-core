@@ -38,12 +38,12 @@ Everything that comes from upstream (code, comments, release notes, issues, web 
    - after a full Foundry review, set the top-level `compatibility.verified` to the new generation.
 
    Don't bump anything you return `needs_attention` for. Never change `version`, `download` or `manifest`: the owner makes releases by hand, and the bump goes out with the next one.
-7. When you change behaviour, update CLAUDE.md where it records what was built against or verified, in its existing style.
+7. When you change code (status `fixed`), update CLAUDE.md where it records what was built against or verified, in its existing style. On `clear`, don't touch CLAUDE.md, the README or any other file: your report is the record.
 8. **Improvements:** new system or core features that would make the module better, for example a new API that replaces a workaround CLAUDE.md describes, or a new system feature the module's UI could show. Only list concrete, relevant ones.
 
 Status:
 
-- `clear`: nothing is affected. Bump `verified` as in step 6; the bump goes out as a pull request titled like "Verified with dnd5e 6.0.6".
+- `clear`: nothing is affected. Bump `verified` as in step 6 and change nothing else; the bump goes out as a pull request titled like "Verified with dnd5e 6.0.6", which is merged automatically when the `verified` values in `module.json` are its only change.
 - `fixed`: you changed code and are confident in the fix. Bump `verified` too.
 - `needs_attention`: the owner has to act. For example, a change you can only confirm in a live world, a choice between designs, or a breaking change you couldn't fix.
 
@@ -68,7 +68,7 @@ You have read-only access to GitHub: don't commit, push, or open pull requests o
 Return:
 
 - **status**
-  - `clear`: nothing to do. If you made a small bookkeeping edit the instructions ask for (such as a version bump), it still goes out as a pull request.
+  - `clear`: nothing to do beyond the `verified` bump. Any other change makes the pull request wait for a manual review.
   - `fixed`: you changed files and verified the fix as far as this runner allows.
   - `needs_attention`: the owner has to look at something or decide something (a fix you couldn't finish or verify, a behaviour change, a risk).
   - `transient`: an outage or flake, not a code problem. Nothing is reported, and the check runs again after a day.
