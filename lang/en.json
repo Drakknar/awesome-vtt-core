@@ -40,6 +40,10 @@
         "TextBoons": "The GM asks {name} for a {attribute} challenge roll, with {boons}.",
         "Roll": "Roll {attribute}"
       },
+      "Ability": {
+        "Title": "{attribute} challenge",
+        "Text": "Does {name}'s {attribute} roll get boons or banes? Banes are on the left (−), boons on the right (+)."
+      },
       "Turn": {
         "Title": "Fast or slow turn?",
         "Text": "Combat: choose a fast or slow turn for {names}."
@@ -61,7 +65,10 @@
       "boon": "{n} boon",
       "boons": "{n} boons",
       "bane": "{n} bane",
-      "banes": "{n} banes"
+      "banes": "{n} banes",
+      "title": "Boons and banes (next roll)",
+      "banesEnd": "Banes",
+      "boonsEnd": "Boons"
     },
     "Roll": {
       "challenge": "Challenge"

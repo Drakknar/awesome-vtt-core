@@ -27,6 +27,8 @@ import { parseHTML } from "./common.mjs";
  * @property {string} text
  * @property {{success: boolean[], failure: boolean[]}} [tally]  Death save successes and failures.
  * @property {boolean} rollMode    Offer Normal / Advantage / Disadvantage.
+ * @property {boolean} [local]     Started on this device (e.g. an attribute rolled from the sheet): answering or
+ *   dismissing it isn't sent to the player's other devices.
  * @property {{label: string, icon?: string, run: function(string): Promise}[]} choices
  */
 
@@ -224,6 +226,33 @@ function challengePrompts(message, enabled, mine) {
   }];
 }
 
+/**
+ * SotDL: an attribute rolled from the sheet (FEATURES.abilityRollPrompt), asking for boons or banes first. Shown like
+ * the other prompts, with the Next roll choice preset to what is armed; only on this device.
+ * @param {Actor} actor
+ * @param {string} key  An attribute key (CONFIG.DL.attributes).
+ */
+export function abilityRollPrompt(actor, key) {
+  const label = CONFIG.DL?.attributes?.[key];
+  if ( !actor || !label ) return null;
+  const attribute = loc(label);
+  return {
+    key: `roll:${actor.uuid}:${key}:${foundry.utils.randomID()}`,
+    kind: "roll",
+    local: true,
+    actor,
+    icon: "fa-solid fa-dice-d20",
+    title: fmt("AVTTC.Prompt.Ability.Title", { attribute }),
+    text: fmt("AVTTC.Prompt.Ability.Text", { name: actor.name, attribute }),
+    rollMode: true,
+    choices: [{
+      label: fmt("AVTTC.Prompt.Challenge.Roll", { attribute }),
+      icon: "fa-solid fa-dice-d20",
+      run: mode => sys.rollAbility(actor, key, mode)
+    }]
+  };
+}
+
 /* -------------------------------------------- */
 /*  Both systems                                */
 /* -------------------------------------------- */
@@ -327,6 +356,7 @@ export class PromptQueue {
       key, kind, icon, title, text, tally,
       choices: prompt.choices.map(({ label, icon }) => ({ label, icon })),
       modes: rollMode ? modes : null,
+      scale: rollMode ? sys.rollModeScale() : null,
       more: this.waiting
     };
   }
@@ -354,7 +384,7 @@ export class PromptQueue {
   /** "Not now": drop the current prompt here and on the player's other devices. */
   dismiss() {
     const prompt = this.#items.shift();
-    if ( prompt ) promptDone(prompt.key);
+    if ( prompt && !prompt.local ) promptDone(prompt.key);
     this.onChange();
   }
 
