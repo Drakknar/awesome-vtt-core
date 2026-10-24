@@ -1,5 +1,5 @@
 import sys from "./system.mjs";
-import { parseHTML } from "./common.mjs";
+import { parseHTML, messageActor } from "./common.mjs";
 
 /**
  * Automation prompts, shared by the table seats and the phone app: time-sensitive rolls offered to the player
@@ -121,7 +121,7 @@ function promptsFromMessage(message, enabled, mine) {
 
 function concentrationPrompts(message, mine) {
   const button = message.system?.buttons?.find(b => b.type === "concentration");
-  const actor = message.getAssociatedActor?.() ?? ChatMessage.getSpeakerActor(message.speaker);
+  const actor = messageActor(message);
   if ( !button || !mine(actor) ) return [];
   const dc = button.dc ?? 10;
   return [{
@@ -252,6 +252,19 @@ export function abilityRollPrompt(actor, key) {
       run: mode => sys.rollAbility(actor, key, mode)
     }]
   };
+}
+
+/**
+ * A sheet's attribute roll asking for boons or banes first (FEATURES.abilityRollPrompt): queue its prompt in `queue`,
+ * unless the same one is already up (a second tap). True when the roll is taken care of, false to roll it straight
+ * away (another system, or an attribute the prompt can't name).
+ */
+export function askAbilityRoll(queue, actor, key) {
+  if ( !sys.FEATURES.abilityRollPrompt ) return false;
+  const prompt = abilityRollPrompt(actor, key);
+  if ( !prompt ) return false;
+  if ( !queue.has(p => p.local && (p.actor === actor) && (p.attribute === key)) ) queue.add(prompt);
+  return true;
 }
 
 /* -------------------------------------------- */

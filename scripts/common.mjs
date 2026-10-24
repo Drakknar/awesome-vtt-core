@@ -106,6 +106,9 @@ export function toggleEffect(actor, uuid) {
   });
 }
 
+/** The actor a chat message is about: its associated actor, or the speaker's. */
+export const messageActor = message => message.getAssociatedActor?.() ?? ChatMessage.getSpeakerActor(message.speaker);
+
 /* -------------------------------------------- */
 /*  Roll results                                */
 /* -------------------------------------------- */
