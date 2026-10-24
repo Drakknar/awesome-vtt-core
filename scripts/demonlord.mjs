@@ -44,7 +44,7 @@ export const FEATURES = {
   party: true,
   /** Using an item rolls straight away with the Next roll's boons or banes (useItem's mode). */
   itemRollMode: true,
-  /** An attribute rolled from the sheet can first ask for boons or banes (abilityRollPrompt, the module's setting). */
+  /** An attribute rolled from the sheet can first ask for boons or banes (prompts.mjs askSheetRoll, the module's setting). */
   abilityRollPrompt: true,
   /** Damage is never rolled after attacks by itself (see rollDamageAfterAttacks): the notice offers it. */
   autoDamage: false,

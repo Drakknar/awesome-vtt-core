@@ -2,10 +2,10 @@
   "id": "awesome-vtt-core",
   "title": "Awesome VTT – Core",
   "description": "Shared code (dnd5e and Shadow of the Demon Lord adapters) for Awesome VTT (table mode) and Awesome VTT – Phone Companion: dnd5e character data, rolls and action checks, the compact sheet, quick actions and automation prompts, the dice pool, the compendium and journal panels, chat and notice helpers, and keeping the screen on. It does nothing on its own.",
-  "version": "0.14.3",
+  "version": "0.15.0",
   "url": "https://github.com/Drakknar/awesome-vtt-core",
   "manifest": "https://github.com/Drakknar/awesome-vtt-core/releases/latest/download/module.json",
-  "download": "https://github.com/Drakknar/awesome-vtt-core/releases/download/v0.14.3/module.zip",
+  "download": "https://github.com/Drakknar/awesome-vtt-core/releases/download/v0.15.0/module.zip",
   "library": true,
   "authors": [
     {

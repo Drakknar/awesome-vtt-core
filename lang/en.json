@@ -47,6 +47,13 @@
       "Turn": {
         "Title": "Fast or slow turn?",
         "Text": "Combat: choose a fast or slow turn for {names}."
+      },
+      "SheetRoll": {
+        "rollAbility": "{name} check",
+        "rollSave": "{name} saving throw",
+        "rollSkill": "{name} check",
+        "Text": "Does {actor}'s {roll} have advantage or disadvantage?",
+        "Roll": "Roll the {roll}"
       }
     },
     "Stat": {
