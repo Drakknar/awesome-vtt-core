@@ -39,6 +39,17 @@ export function sheetContext(actor, tab, tabLabel) {
   if ( tab === "abilities" ) context.abilities = sys.getAbilities(actor);
   if ( tab === "skills" ) context.skills = sys.getSkills(actor);
   if ( tab === "status" ) context.status = true;
+  if ( tab === "bio" ) context.bio = sys.getBio(actor);
+  return context;
+}
+
+/** The parts of sheetContext's data that need async work: the Bio tab's description, enriched like a journal. */
+export async function enrichSheet(context, actor) {
+  if ( !context.bio ) return context;
+  const TextEditor = foundry.applications.ux.TextEditor.implementation;
+  context.bio.html = context.bio.description
+    ? await TextEditor.enrichHTML(context.bio.description, { secrets: actor.isOwner, relativeTo: actor })
+    : "";
   return context;
 }
 

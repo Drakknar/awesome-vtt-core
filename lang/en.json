@@ -95,6 +95,16 @@
         "cp": "cp",
         "bits": "bits"
       }
+    },
+    "Bio": {
+      "paths": "Paths",
+      "appearance": "Appearance"
+    },
+    "Settings": {
+      "compendiumAdd": {
+        "Name": "Players may add items from compendiums",
+        "Hint": "In the table seats' and the phone's Compendium panel, an opened weapon, armour or other gear item gets an \"Add to inventory\" button for the player's character. Turn it off if only the GM hands out gear."
+      }
     }
   }
 }

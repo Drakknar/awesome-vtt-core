@@ -121,10 +121,13 @@ export function toggleEffect(actor, uuid) {
  * @param {boolean} [options.shared]  A screen everyone at the table can read (see summarizeRoll).
  * @param {function(ChatMessage, object): object|null} options.summarize  The system adapter's summarizeRoll.
  * @param {function(ChatMessage): boolean} [options.enabled]  Checked first, so turned-off notices cost nothing.
+ * @param {function(ChatMessage): boolean} [options.others]  Also take this roll made by another user (e.g. the table
+ *   screen shows the rolls its seated characters make on their phones). `fn` can tell them by `message.isAuthor`.
  */
-export function onRollResult(fn, { shared = false, summarize, enabled = () => true } = {}) {
+export function onRollResult(fn, { shared = false, summarize, enabled = () => true, others = () => false } = {}) {
   Hooks.on("createChatMessage", message => {
-    if ( !message.isAuthor || !message.isContentVisible || !enabled(message) ) return;
+    if ( !message.isContentVisible || !enabled(message) ) return;
+    if ( !message.isAuthor && !others(message) ) return;
     afterDiceAnimation(message).then(() => {
       const result = summarize(message, { shared });
       if ( result ) fn(result, message);

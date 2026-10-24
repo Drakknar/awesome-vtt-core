@@ -101,6 +101,9 @@ export function getSummary(actor) {
   };
 }
 
+/** No Bio tab: dnd5e's own sheet has the biography. */
+export const getBio = () => null;
+
 export function getAbilities(actor) {
   return Object.entries(CONFIG.DND5E.abilities).map(([key, cfg]) => {
     const a = actor.system.abilities?.[key] ?? {};

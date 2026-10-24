@@ -1,6 +1,8 @@
 import * as compendium from "./compendium.mjs";
 import * as journal from "./journal.mjs";
 import { refocus } from "./ui.mjs";
+import sys from "./system.mjs";
+import { coreSetting } from "./settings.mjs";
 
 /**
  * The state and actions of the Compendium and Journal panels, shared by the table seats and the phone app.
@@ -13,16 +15,20 @@ const DEBOUNCE_MS = 250;
 
 export class CompendiumPanel {
   /** Actions handled by `handle()`. */
-  static ACTIONS = new Set(["compSearch", "compClear", "compBrowse", "compMore", "compOpen", "compBack", "compOpenSheet"]);
+  static ACTIONS = new Set([
+    "compSearch", "compClear", "compBrowse", "compMore", "compOpen", "compBack", "compOpenSheet", "compAddItem"
+  ]);
 
   /**
    * @param {object} options
    * @param {() => Promise<void>} options.render
    * @param {() => HTMLElement|null} options.root
+   * @param {() => Actor|null} [options.actor]  The character an opened item can be added to (its inventory).
    */
-  constructor({ render, root }) {
+  constructor({ render, root, actor = () => null }) {
     this.render = render;
     this.root = root;
+    this.actor = actor;
     // Live search: runs shortly after typing stops.
     this.searchSoon = foundry.utils.debounce(() => this.search({ live: true }), DEBOUNCE_MS);
   }
@@ -38,8 +44,21 @@ export class CompendiumPanel {
 
   /** Template data: the search, its results or open entry, or (with an empty search box) the browser. */
   async context() {
-    const { query, results, entry, searching } = this;
+    const { query, results, searching } = this;
+    const entry = this.entry ? { ...this.entry, add: this.#addTarget() } : null;
     return { query, results, entry, searching, short: query.trim().length < compendium.MIN_QUERY, ...(await this.#browser()) };
+  }
+
+  /**
+   * "Add to inventory" for the opened entry: an inventory item (the adapter's INVENTORY_TYPES), a character this user
+   * owns, and the GM's world setting on. Returns the character's name and how many were added so far, or null.
+   */
+  #addTarget() {
+    const entry = this.entry;
+    const actor = this.actor();
+    if ( !entry || (entry.documentName !== "Item") || !sys.INVENTORY_TYPES.includes(entry.type) ) return null;
+    if ( !actor?.isOwner || !coreSetting("compendiumAdd") ) return null;
+    return { name: actor.name, added: entry.added ?? 0 };
   }
 
   /** With an empty search box, the compendium list or the open compendium (folder) is shown. */
@@ -111,6 +130,17 @@ export class CompendiumPanel {
       }
       case "compBack": this.entry = null; return this.render();
       case "compOpenSheet": return (await fromUuid(this.entry?.uuid))?.sheet?.render({ force: true });
+      case "compAddItem": {
+        const entry = this.entry;
+        const actor = this.actor();
+        if ( !this.#addTarget() ) return;
+        const item = await fromUuid(entry.uuid).catch(() => null);
+        if ( !item ) return;
+        await sys.copyItems([item], actor);
+        // Count only if the same entry is still open (it may have been closed while the item was created).
+        if ( this.entry === entry ) entry.added = (entry.added ?? 0) + 1;
+        return this.render();
+      }
     }
   }
 }

@@ -53,7 +53,7 @@ export const FEATURES = {
 };
 
 /** No Skills tab: SotDL rolls attributes (the user's tab order, without skills). */
-export const SHEET_TABS = ["actions", "spells", "abilities", "inventory", "status"];
+export const SHEET_TABS = ["actions", "spells", "abilities", "inventory", "status", "bio"];
 
 /** The "Next roll" choice: up to three banes or boons. "normal" is none, as in dnd5e. */
 export const ROLL_MODES = ["bane3", "bane2", "bane1", "normal", "boon1", "boon2", "boon3"];
@@ -176,6 +176,32 @@ export function getAbilities(actor) {
 }
 
 export const getSkills = () => [];
+
+/**
+ * The Bio tab (read-only): ancestry, paths, professions, languages and religion, the appearance fields the system's
+ * sheet shows, and the description, where the character builder writes the background tables and the interesting
+ * thing. The description is enriched by the core's enrichSheet.
+ */
+export function getBio(actor) {
+  const names = type => actor.items.filter(i => i.type === type).map(i => i.name).join(", ");
+  const s = actor.system;
+  const a = s.appearance ?? {};
+  const rows = list => list.map(([label, value]) => ({ label: loc(label), value: String(value ?? "").trim() })).filter(r => r.value);
+  return {
+    facts: rows([
+      ["DL.CharAncestry", names("ancestry")], ["AVTTC.Bio.paths", names("path")],
+      ["DL.CharProfessions", names("profession")], ["DL.CharLanguages", names("language")],
+      ["DL.CharReligion", s.religion?.value]
+    ]),
+    appearance: rows([
+      ["DL.CharGender", a.sex], ["DL.CharAge", a.age], ["DL.CharHeight", a.height], ["DL.CharWeight", a.weight],
+      ["DL.CharEyes", a.eyes], ["DL.CharHair", a.hair]
+    ]),
+    appearanceLabel: loc("AVTTC.Bio.appearance"),
+    descriptionLabel: loc("DL.TabsBackground"),
+    description: s.description ?? ""
+  };
+}
 
 /* -------------------------------------------- */
 /*  Uses                                        */
