@@ -58,7 +58,7 @@ export class CompendiumPanel {
     const actor = this.actor();
     if ( !entry || (entry.documentName !== "Item") || !sys.INVENTORY_TYPES.includes(entry.type) ) return null;
     if ( !actor?.isOwner || !coreSetting("compendiumAdd") ) return null;
-    return { name: actor.name, added: entry.added ?? 0 };
+    return { name: actor.name, added: entry.added?.[actor.id] ?? 0 };
   }
 
   /** With an empty search box, the compendium list or the open compendium (folder) is shown. */
@@ -138,7 +138,10 @@ export class CompendiumPanel {
         if ( !item ) return;
         await sys.copyItems([item], actor);
         // Count only if the same entry is still open (it may have been closed while the item was created).
-        if ( this.entry === entry ) entry.added = (entry.added ?? 0) + 1;
+        if ( this.entry === entry ) {
+          entry.added ??= {};
+          entry.added[actor.id] = (entry.added[actor.id] ?? 0) + 1;
+        }
         return this.render();
       }
     }
