@@ -26,14 +26,15 @@ export const FEATURES = {
   deathSaves: true, prompts: true, useSteps: true, initiative: "roll", party: true,
   // Using an item doesn't take the Next roll choice: dnd5e's own attack roll asks (or the phone's use dialog).
   itemRollMode: false,
-  // Ability checks roll with the Next roll choice straight away (dnd5e's own dialog is skipped, as before).
-  abilityRollPrompt: false,
+  // Checks, saves and skills from the sheet can first ask for advantage (prompts.mjs askSheetRoll; the module's
+  // per-browser setting, off by default in dnd5e). dnd5e's own dialog is skipped, as before.
+  abilityRollPrompt: true,
   /** rollDamageAfterAttacks rolls attack damage by itself (when the module's setting allows it). */
   autoDamage: true
 };
 
 /** The compact sheet's tabs, in the user's order (core sheet.mjs). */
-export const SHEET_TABS = ["actions", "skills", "spells", "abilities", "inventory", "status"];
+export const SHEET_TABS = ["actions", "skills", "spells", "abilities", "inventory", "status", "bio"];
 
 /** The "Next roll" choice for d20 rolls: advantage or disadvantage. Labels come from each module. */
 export const ROLL_MODES = ["normal", "adv", "dis"];
@@ -101,8 +102,31 @@ export function getSummary(actor) {
   };
 }
 
-/** No Bio tab: dnd5e's own sheet has the biography. */
-export const getBio = () => null;
+/**
+ * The Bio tab (read-only), as dnd5e's Biography tab: species, background, classes, alignment, faith, personality
+ * (traits, ideals, bonds, flaws), appearance and the biography. The phone has no full sheet to read them on.
+ * The biography is enriched by the core's enrichSheet.
+ */
+export function getBio(actor) {
+  const d = actor.system.details ?? {};
+  const itemName = type => actor.items.find(i => i.type === type)?.name;
+  const classes = actor.items.filter(i => i.type === "class").map(c => `${c.name} ${c.system.levels ?? ""}`.trim()).join(", ");
+  const rows = list => list.map(([label, value]) => ({ label: loc(label), value: String(value ?? "").trim() })).filter(r => r.value);
+  return {
+    facts: rows([
+      ["TYPES.Item.race", itemName("race")], ["TYPES.Item.background", itemName("background")],
+      ["TYPES.Item.classPl", classes], ["DND5E.Alignment", d.alignment], ["DND5E.Faith", d.faith],
+      ["DND5E.PersonalityTraits", d.trait], ["DND5E.Ideals", d.ideal], ["DND5E.Bonds", d.bond], ["DND5E.Flaws", d.flaw]
+    ]),
+    appearance: rows([
+      ["DND5E.Gender", d.gender], ["DND5E.Age", d.age], ["DND5E.Height", d.height], ["DND5E.Weight", d.weight],
+      ["DND5E.Eyes", d.eyes], ["DND5E.Hair", d.hair], ["DND5E.Skin", d.skin], ["DND5E.Appearance", d.appearance]
+    ]),
+    appearanceLabel: loc("DND5E.Appearance"),
+    descriptionLabel: loc("DND5E.Biography"),
+    description: d.biography?.value ?? ""
+  };
+}
 
 export function getAbilities(actor) {
   return Object.entries(CONFIG.DND5E.abilities).map(([key, cfg]) => {

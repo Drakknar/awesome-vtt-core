@@ -229,11 +229,10 @@ function challengePrompts(message, enabled, mine) {
 /**
  * SotDL: an attribute rolled from the sheet (FEATURES.abilityRollPrompt), asking for boons or banes first. Shown like
  * the other prompts, with the Next roll choice preset to what is armed; only on this device.
- * @param {Actor} actor
- * @param {string} key  An attribute key (CONFIG.DL.attributes).
  */
-export function abilityRollPrompt(actor, key) {
-  const label = CONFIG.DL?.attributes?.[key];
+function attributeRollPrompt(actor, action, data) {
+  const key = data.ability;
+  const label = (action === "rollAbility") ? CONFIG.DL?.attributes?.[key] : null;
   if ( !actor || !label ) return null;
   const attribute = loc(label);
   return {
@@ -241,7 +240,7 @@ export function abilityRollPrompt(actor, key) {
     kind: "roll",
     local: true,
     actor,
-    attribute: key,
+    rollKey: `${action}:${key}`,
     icon: "fa-solid fa-dice-d20",
     title: fmt("AVTTC.Prompt.Ability.Title", { attribute }),
     text: fmt("AVTTC.Prompt.Ability.Text", { name: actor.name, attribute }),
@@ -254,16 +253,47 @@ export function abilityRollPrompt(actor, key) {
   };
 }
 
+/** dnd5e: an ability check, saving throw or skill rolled from the sheet, asking for advantage first. */
+function checkRollPrompt(actor, action, data) {
+  const skill = action === "rollSkill";
+  const key = skill ? data.skill : data.ability;
+  const config = skill ? CONFIG.DND5E.skills[key] : CONFIG.DND5E.abilities[key];
+  const roller = { rollAbility: sys.rollAbility, rollSave: sys.rollSave, rollSkill: sys.rollSkill }[action];
+  if ( !actor || !config || !roller ) return null;
+  const roll = fmt(`AVTTC.Prompt.SheetRoll.${action}`, { name: loc(config.label) });
+  return {
+    key: `roll:${actor.uuid}:${action}:${key}:${foundry.utils.randomID()}`,
+    kind: "roll",
+    local: true,
+    actor,
+    rollKey: `${action}:${key}`,
+    icon: "fa-solid fa-dice-d20",
+    title: roll,
+    text: fmt("AVTTC.Prompt.SheetRoll.Text", { actor: actor.name, roll }),
+    rollMode: true,
+    choices: [{
+      label: fmt("AVTTC.Prompt.SheetRoll.Roll", { roll }),
+      icon: "fa-solid fa-dice-d20",
+      run: mode => roller(actor, key, mode)
+    }]
+  };
+}
+
 /**
- * A sheet's attribute roll asking for boons or banes first (FEATURES.abilityRollPrompt): queue its prompt in `queue`,
- * unless the same one is already up (a second tap). True when the roll is taken care of, false to roll it straight
- * away (another system, or an attribute the prompt can't name).
+ * A sheet roll asking first (FEATURES.abilityRollPrompt): SotDL's attributes for boons or banes, dnd5e's checks,
+ * saves and skills for advantage. Queues its prompt in `queue`, unless the same one is already up (a second tap).
+ * True when the roll is taken care of, false to roll it straight away (nothing to ask, or a roll the prompt can't
+ * name).
+ * @param {PromptQueue} queue
+ * @param {Actor} actor
+ * @param {string} action     The sheet button's action (rollAbility, rollSave, rollSkill).
+ * @param {DOMStringMap} data The button's dataset (ability or skill).
  */
-export function askAbilityRoll(queue, actor, key) {
+export function askSheetRoll(queue, actor, action, data) {
   if ( !sys.FEATURES.abilityRollPrompt ) return false;
-  const prompt = abilityRollPrompt(actor, key);
+  const prompt = BUILDERS[game.system.id]?.sheetRoll(actor, action, data);
   if ( !prompt ) return false;
-  if ( !queue.has(p => p.local && (p.actor === actor) && (p.attribute === key)) ) queue.add(prompt);
+  if ( !queue.has(p => p.local && (p.actor === actor) && (p.rollKey === prompt.rollKey)) ) queue.add(prompt);
   return true;
 }
 
@@ -313,8 +343,8 @@ function initiativePrompts(enabled, mine, rollMode) {
  * (SotDL's optional initiative modes roll with the system's own formula).
  */
 const BUILDERS = {
-  dnd5e: { fromMessage: promptsFromMessage, initiativeRollMode: true },
-  demonlord: { fromMessage: challengePrompts, initiativeRollMode: false }
+  dnd5e: { fromMessage: promptsFromMessage, initiativeRollMode: true, sheetRoll: checkRollPrompt },
+  demonlord: { fromMessage: challengePrompts, initiativeRollMode: false, sheetRoll: attributeRollPrompt }
 };
 
 /* -------------------------------------------- */
