@@ -241,6 +241,7 @@ export function abilityRollPrompt(actor, key) {
     kind: "roll",
     local: true,
     actor,
+    attribute: key,
     icon: "fa-solid fa-dice-d20",
     title: fmt("AVTTC.Prompt.Ability.Title", { attribute }),
     text: fmt("AVTTC.Prompt.Ability.Text", { name: actor.name, attribute }),
@@ -359,6 +360,11 @@ export class PromptQueue {
       scale: rollMode ? sys.rollModeScale() : null,
       more: this.waiting
     };
+  }
+
+  /** Is a prompt matching `test` shown or waiting? (e.g. the same attribute roll, tapped twice) */
+  has(test) {
+    return this.#items.some(test);
   }
 
   /** Prompts waiting after the current one. */

@@ -6,12 +6,15 @@
  *
  * Socket (core channel): `{ type: "visibleAsk", id, actorId, sceneId, tokenIds }` from a user who owns the
  * character; a device that can tell (answerVisibility) replies `{ type: "visibleTell", id, tokenIds }` with the
- * visible ones. The first reply counts; without one in time the result is null (unknown).
+ * visible ones. Only a reply from the user the asker expects (the table user) counts; without one in time the
+ * result is null (unknown). Module sockets reach every client, so other players could read the answer: it only
+ * says which tokens a character can see.
  */
 
 const CHANNEL = "module.awesome-vtt-core";
 const REPLY_MS = 1500;
-const MAX_IDS = 200;
+/** The most token ids one question covers. */
+export const MAX_IDS = 1000;
 
 const pending = new Map();
 let listening = false;
@@ -24,7 +27,7 @@ function listen() {
   listening = true;
   game.socket.on(CHANNEL, (data, senderId) => {
     if ( (data?.type === "visibleTell") && pending.has(data.id) && isIdList(data.tokenIds) ) {
-      pending.get(data.id)(data.tokenIds);
+      pending.get(data.id)(data.tokenIds, senderId);
       return;
     }
     if ( (data?.type !== "visibleAsk") || !answering || (typeof data.id !== "string") || !isIdList(data.tokenIds) ) return;
@@ -55,7 +58,7 @@ export function visibleHere(actor, sceneId, tokenIds) {
   const visibility = canvas.visibility;
   if ( !visibility?.tokenVision ) return [...tokenIds];
   if ( typeof visibility._createVisibilityTestConfig !== "function" ) return null;
-  const sources = canvas.effects.visionSources.filter(s => s.active && !s.isBlinded && (s.object?.document?.actorId === actor.id));
+  const sources = canvas.effects.visionSources.filter(s => s.active && (s.object?.document?.actorId === actor.id));
   if ( !sources.length ) return null;
   const lights = canvas.effects.lightSources.filter(l => l.active && l.data?.vision);
   const modes = CONFIG.Canvas.detectionModes;
@@ -65,31 +68,39 @@ export function visibleHere(actor, sceneId, tokenIds) {
     if ( token.document.actorId === actor.id ) return true;
     const config = visibility._createVisibilityTestConfig(token.document.getVisibilityTestPoints(), { tolerance: 0, object: token });
     if ( lights.some(light => light.testVisibility(config) === true) ) return true;
+    // As core: a blinded source loses basic sight and light perception, not its other senses (e.g. tremorsense).
     return sources.some(source => Object.entries(source.object.document.detectionModes ?? {})
+      .filter(([mode]) => !(source.isBlinded && ["basicSight", "lightPerception"].includes(mode)))
       .some(([mode, data]) => modes[mode]?.testVisibility(source, data, config) === true));
   });
 }
 
 /**
  * What the character can see among `tokenIds` on a scene: from this device's map if it can tell, otherwise asked of
- * the other devices. Resolves null when nobody could tell in time.
+ * the device of `answerer` (the table user). Resolves null when nobody could tell in time.
+ * @param {Actor} actor
+ * @param {string} sceneId
+ * @param {string[]} tokenIds  At most MAX_IDS are asked about.
+ * @param {object} [options]
+ * @param {string|null} [options.answerer]  The id of the only user whose reply counts; without it, nobody is asked.
  * @returns {Promise<string[]|null>}
  */
-export function visibleTokenIds(actor, sceneId, tokenIds) {
+export function visibleTokenIds(actor, sceneId, tokenIds, { answerer = null } = {}) {
   const here = visibleHere(actor, sceneId, tokenIds);
   if ( here ) return Promise.resolve(here);
-  if ( !actor || !game.socket ) return Promise.resolve(null);
+  if ( !actor || !game.socket || !answerer || !game.users.get(answerer)?.active ) return Promise.resolve(null);
   listen();
-  const asked = new Set(tokenIds);
+  const asked = new Set(tokenIds.slice(0, MAX_IDS));
   const id = foundry.utils.randomID();
   return new Promise(resolve => {
-    const done = ids => {
+    const finish = ids => {
       window.clearTimeout(timer);
       pending.delete(id);
       resolve(ids ? ids.filter(t => asked.has(t)) : null);
     };
-    const timer = window.setTimeout(() => done(null), REPLY_MS);
-    pending.set(id, done);
-    game.socket.emit(CHANNEL, { type: "visibleAsk", id, actorId: actor.id, sceneId, tokenIds: [...asked].slice(0, MAX_IDS) });
+    const timer = window.setTimeout(() => finish(null), REPLY_MS);
+    // A reply from anyone but the expected device is ignored (a player can't hide or reveal others' targets).
+    pending.set(id, (ids, senderId) => { if ( senderId === answerer ) finish(ids); });
+    game.socket.emit(CHANNEL, { type: "visibleAsk", id, actorId: actor.id, sceneId, tokenIds: [...asked] });
   });
 }

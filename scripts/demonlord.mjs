@@ -552,7 +552,8 @@ export function getInventory(actor) {
       id: item.id,
       name: item.name,
       img: item.img,
-      favorite: false,
+      // The star lights up for favorites, as in the Actions tab (it was always unlit here).
+      favorite: isFavorite(actor, item),
       quantity: item.system.quantity ?? 1,
       equippable: "wear" in item.system,
       equipped: !!item.system.wear,
