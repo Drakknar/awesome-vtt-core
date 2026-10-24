@@ -232,7 +232,7 @@ export function getActions(actor) {
   push(loc("AVTTC.DL.Weapons"), actor.items.filter(i => (i.type === "weapon") && (i.system.wear !== false)));
   push(loc("DL.TabsTalents"), actor.items.filter(i => i.type === "talent"));
   push(loc("AVTTC.DL.Spells"), actor.items.filter(i => i.type === "spell"));
-  push(loc("DL.TabsItems"), actor.items.filter(i => (i.type === "item") && (i.system.consumabletype || i.system.action?.attack)));
+  push(loc("DL.TabsItems"), actor.items.filter(i => (i.type === "item") && itemActs(i)));
   return groups;
 }
 
@@ -286,19 +286,34 @@ const favoriteIds = actor => {
 
 export const canFavorite = actor => !!actor?.isOwner && (actor.type === "character");
 
+/**
+ * Does using this item do something? Weapons, talents and spells always; other gear when it attacks, deals damage,
+ * heals, has an extra effect, is a consumable or carries active effects. Only these can be favorites (the pill's
+ * one-tap uses): a candle or a backpack would only post its card.
+ */
+export function itemActs(item) {
+  if ( !item ) return false;
+  if ( ["weapon", "talent", "spell"].includes(item.type) ) return true;
+  const s = item.system ?? {};
+  return !!(s.consumabletype || s.action?.attack || s.action?.damage || s.action?.extraEffect || s.healingoption
+    || s.healing?.healing || item.effects?.size);
+}
+
 export const isFavorite = (actor, item) => !!item && favoriteIds(actor).includes(item.id);
 
 export function toggleFavorite(actor, itemId) {
   if ( !canFavorite(actor) || !actor.items.has(itemId) ) return;
   // Ids of items that no longer exist are dropped as the list changes.
   const ids = favoriteIds(actor).filter(id => actor.items.has(id));
+  // An item that does nothing when used can be taken off the list, not put on it.
+  if ( !ids.includes(itemId) && !itemActs(actor.items.get(itemId)) ) return;
   const next = ids.includes(itemId) ? ids.filter(id => id !== itemId) : [...ids, itemId];
   return actor.setFlag(CORE_ID, "favorites", next);
 }
 
 /** @returns {{id: string, name: string, img: string}[]} */
 export const getFavoriteActions = actor => favoriteIds(actor)
-  .map(id => actor.items.get(id)).filter(Boolean).slice(0, FAVORITES_MAX)
+  .map(id => actor.items.get(id)).filter(itemActs).slice(0, FAVORITES_MAX)
   .map(({ id, name, img }) => ({ id, name, img }));
 
 /* -------------------------------------------- */
@@ -552,8 +567,9 @@ export function getInventory(actor) {
       id: item.id,
       name: item.name,
       img: item.img,
-      // The star lights up for favorites, as in the Actions tab (it was always unlit here).
+      // The star lights up for favorites, as in the Actions tab; gear that does nothing when used has none.
       favorite: isFavorite(actor, item),
+      noFavorite: !itemActs(item),
       quantity: item.system.quantity ?? 1,
       equippable: "wear" in item.system,
       equipped: !!item.system.wear,
