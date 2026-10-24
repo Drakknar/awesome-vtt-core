@@ -138,5 +138,5 @@ export async function openEntry(uuid) {
       .join("");
   }
   const html = await TextEditor().enrichHTML(content, { secrets: false, relativeTo: doc });
-  return { uuid, name: doc.name, img: doc.img, html };
+  return { uuid, name: doc.name, img: doc.img, html, documentName: doc.documentName, type: doc.type };
 }
