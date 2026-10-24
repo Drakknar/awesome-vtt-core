@@ -288,15 +288,16 @@ export const canFavorite = actor => !!actor?.isOwner && (actor.type === "charact
 
 /**
  * Does using this item do something? Weapons, talents and spells always; other gear when it attacks, deals damage,
- * heals, has an extra effect, is a consumable or carries active effects. Only these can be favorites (the pill's
+ * heals, has an extra effect, is a consumable or carries effects it applies when used. Only these can be favorites (the pill's
  * one-tap uses): a candle or a backpack would only post its card.
  */
 export function itemActs(item) {
   if ( !item ) return false;
   if ( ["weapon", "talent", "spell"].includes(item.type) ) return true;
   const s = item.system ?? {};
+  // Effects count when using the item applies them; always-on ones (worn armour, a relic's aura) don't.
   return !!(s.consumabletype || s.action?.attack || s.action?.damage || s.action?.extraEffect || s.healingoption
-    || s.healing?.healing || item.effects?.size);
+    || s.healing?.healing || item.effects?.some(e => !e.transfer));
 }
 
 export const isFavorite = (actor, item) => !!item && favoriteIds(actor).includes(item.id);
