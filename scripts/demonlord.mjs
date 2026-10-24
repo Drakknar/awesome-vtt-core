@@ -44,6 +44,8 @@ export const FEATURES = {
   party: true,
   /** Using an item rolls straight away with the Next roll's boons or banes (useItem's mode). */
   itemRollMode: true,
+  /** An attribute rolled from the sheet can first ask for boons or banes (abilityRollPrompt, the module's setting). */
+  abilityRollPrompt: true,
   /** Damage is never rolled after attacks by itself (see rollDamageAfterAttacks): the notice offers it. */
   autoDamage: false,
   /** "speed" (fast / slow turns) in the default mode; the optional modes roll. */
@@ -68,6 +70,11 @@ export function rollModeLabel(mode) {
   const key = n > 0 ? (n === 1 ? "AVTTC.Boons.boon" : "AVTTC.Boons.boons") : (n === -1 ? "AVTTC.Boons.bane" : "AVTTC.Boons.banes");
   return game.i18n.format(key, { n: Math.abs(n) });
 }
+
+/** The Next roll choice's heading and the names of its two ends (banes on the left, boons on the right). */
+export const rollModeScale = () => ({
+  title: loc("AVTTC.Boons.title"), low: loc("AVTTC.Boons.banesEnd"), high: loc("AVTTC.Boons.boonsEnd")
+});
 
 /** "+2" for two boons, "−1" for one bane. */
 export const rollModeShort = mode => {

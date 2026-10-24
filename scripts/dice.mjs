@@ -52,6 +52,9 @@ export const advModeChoices = (labels, active) => advModes().map(id => {
   return { id, label, text: sys.rollModeShort(id) ?? label, tone: advModeTone(id), active: id === active };
 });
 
+/** The Next roll choice's heading and end labels ({title, low, high}, SotDL: banes … boons), or null (dnd5e). */
+export const advModeScale = () => sys.rollModeScale();
+
 /** The colour of a mode: "adv" (advantage, boons), "dis" (disadvantage, banes) or "normal". */
 export const advModeTone = id => (id.startsWith("boon") ? "adv" : id.startsWith("bane") ? "dis" : id);
 

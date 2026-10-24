@@ -26,6 +26,8 @@ export const FEATURES = {
   deathSaves: true, prompts: true, useSteps: true, initiative: "roll", party: true,
   // Using an item doesn't take the Next roll choice: dnd5e's own attack roll asks (or the phone's use dialog).
   itemRollMode: false,
+  // Ability checks roll with the Next roll choice straight away (dnd5e's own dialog is skipped, as before).
+  abilityRollPrompt: false,
   /** rollDamageAfterAttacks rolls attack damage by itself (when the module's setting allows it). */
   autoDamage: true
 };
@@ -37,6 +39,8 @@ export const SHEET_TABS = ["actions", "skills", "spells", "abilities", "inventor
 export const ROLL_MODES = ["normal", "adv", "dis"];
 export const rollModeLabel = () => null;
 export const rollModeShort = () => null;
+/** The modules' own "Next roll" heading; no scale under the three choices. */
+export const rollModeScale = () => null;
 
 /** The dice pool's single d20 under a roll mode (rolled twice, keep the higher or lower), or null. */
 export const poolD20 = mode => ({ adv: "2d20kh", dis: "2d20kl" })[mode] ?? null;
