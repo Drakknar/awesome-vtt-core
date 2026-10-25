@@ -478,7 +478,10 @@ export function toggleCondition(actor, id) {
   const active = !actor.statuses.has(id);
   return queueEffects(actor, async () => {
     if ( actor.statuses.has(id) === active ) return;
-    await raceTolerant(() => actor.toggleStatusEffect(id, { active }));
+    if ( active ) await raceTolerant(() => actor.toggleStatusEffect(id, { active }));
+    // Off: every effect of the actor with the status, as the system's own findDeleteEffect. Core's toggle only finds
+    // the status's static _id, and the system adds some with random ids (Unconscious when Dying, see fixStatusIds).
+    else for ( const effect of actor.effects.filter(e => e.statuses.has(id)) ) await raceTolerant(() => effect.delete());
     await waitFor(() => actor.statuses.has(id) === active, 2000);
   });
 }

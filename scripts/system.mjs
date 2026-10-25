@@ -19,29 +19,48 @@ export const isSupported = () => game.system?.id in ADAPTERS;
 /** The adapter of this world's system (dnd5e's when the system isn't supported; callers check isSupported first). */
 export const adapter = () => ADAPTERS[game.system?.id] ?? dnd5e;
 
-let statusIdsFixed = false;
-
 /**
  * Mark the page with the world's system (`<body data-avtt-system="…">`), so the modules' CSS can adapt to it. Called
- * at init by both modules; also queues fixStatusIds for setup (once).
+ * at init by both modules; also runs fixStatusIds.
  */
 export function markSystem() {
   document.body.dataset.avttSystem = game.system?.id ?? "";
-  if ( statusIdsFixed ) return;
-  statusIdsFixed = true;
-  Hooks.once("setup", fixStatusIds);
+  fixStatusIds();
 }
 
+/** Status id → the static _id fixStatusIds gave it. */
+const staticIds = new Map();
+let statusIdsFixed = false;
+
 /**
- * Give a static _id to every status effect that brings other statuses with it and has none: Foundry v14 refuses to
- * toggle it otherwise ("Status effects with implicit statuses must have a static _id"). SotDL 6.1.x registers Blinded
- * and Unconscious (both add core's "blind") without one, at its own setup hook, which runs before ours.
+ * Foundry v14 refuses to toggle a status effect that brings other statuses with it unless it has a static _id ("Status
+ * effects with implicit statuses must have a static _id"), and once it has one, core's toggle and token HUD only find
+ * the effect with that _id. SotDL 6.1.x registers Blinded and Unconscious (both add core's "blind") without one, and
+ * creates such effects itself with random ids (Dying or Asleep → Unconscious, the sheet, the afflictions compendium).
+ * Call at init (markSystem does; modules that don't call it call this); the hooks are added once:
+ * - at setup, after the system's own setup hook, every such status without _id gets one;
+ * - an effect created on an actor with one of those statuses gets that _id, unless the actor already has it, so core
+ *   finds it and the token HUD doesn't add a second copy.
  */
-function fixStatusIds() {
-  for ( const status of Object.values(CONFIG.statusEffects) ) {
-    if ( status._id || (new Set([status.id, ...status.statuses ?? []]).size < 2) ) continue;
-    status._id = `avtt${status.id}`.replace(/[^A-Za-z0-9]/g, "").padEnd(16, "0").slice(0, 16);
-  }
+export function fixStatusIds() {
+  if ( statusIdsFixed ) return;
+  statusIdsFixed = true;
+  Hooks.once("setup", () => {
+    for ( const status of Object.values(CONFIG.statusEffects) ) {
+      if ( status._id || (new Set([status.id, ...status.statuses ?? []]).size < 2) ) continue;
+      status._id = `avtt${status.id}`.replace(/[^A-Za-z0-9]/g, "").padEnd(16, "0").slice(0, 16);
+      staticIds.set(status.id, status._id);
+    }
+  });
+  Hooks.on("preCreateActiveEffect", (effect, data, options) => {
+    const actor = effect.parent;
+    if ( !staticIds.size || (actor?.documentName !== "Actor") ) return;
+    const id = [...staticIds.keys()].find(s => effect.statuses.has(s));
+    const _id = staticIds.get(id);
+    if ( !_id || actor.effects.has(_id) ) return;
+    effect.updateSource({ _id });
+    options.keepId = true;
+  });
 }
 
 /**
