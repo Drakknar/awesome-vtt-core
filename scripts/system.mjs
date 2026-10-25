@@ -19,8 +19,30 @@ export const isSupported = () => game.system?.id in ADAPTERS;
 /** The adapter of this world's system (dnd5e's when the system isn't supported; callers check isSupported first). */
 export const adapter = () => ADAPTERS[game.system?.id] ?? dnd5e;
 
-/** Mark the page with the world's system (`<body data-avtt-system="…">`), so the modules' CSS can adapt to it. */
-export const markSystem = () => document.body.dataset.avttSystem = game.system?.id ?? "";
+let statusIdsFixed = false;
+
+/**
+ * Mark the page with the world's system (`<body data-avtt-system="…">`), so the modules' CSS can adapt to it. Called
+ * at init by both modules; also queues fixStatusIds for setup (once).
+ */
+export function markSystem() {
+  document.body.dataset.avttSystem = game.system?.id ?? "";
+  if ( statusIdsFixed ) return;
+  statusIdsFixed = true;
+  Hooks.once("setup", fixStatusIds);
+}
+
+/**
+ * Give a static _id to every status effect that brings other statuses with it and has none: Foundry v14 refuses to
+ * toggle it otherwise ("Status effects with implicit statuses must have a static _id"). SotDL 6.1.x registers Blinded
+ * and Unconscious (both add core's "blind") without one, at its own setup hook, which runs before ours.
+ */
+function fixStatusIds() {
+  for ( const status of Object.values(CONFIG.statusEffects) ) {
+    if ( status._id || (new Set([status.id, ...status.statuses ?? []]).size < 2) ) continue;
+    status._id = `avtt${status.id}`.replace(/[^A-Za-z0-9]/g, "").padEnd(16, "0").slice(0, 16);
+  }
+}
 
 /**
  * Should a roll's notice offer to roll its damage (the adapter's rollDamageFrom)? When the adapter's summarizeRoll
