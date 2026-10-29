@@ -87,7 +87,7 @@ export const SHEET_ACTIONS = new Set([
  * @param {"normal"|"adv"|"dis"} [advMode]  For d20 rolls.
  * @param {object} [options]
  * @param {Set<string>} [options.toggled]  Effects toggled from the quick actions, kept in their list (see below).
- * @returns {unknown} What the system adapter returns (often a Promise).
+ * @returns {unknown|undefined} What the system adapter returns (often a Promise).
  */
 export function runSheetAction(actor, action, data, advMode = "normal", { toggled } = {}) {
   if ( !actor ) return;

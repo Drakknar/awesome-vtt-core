@@ -197,7 +197,8 @@ export class DicePanel {
   }
 
   context() {
-    return { ...this.pool.context(this.advMode()), physicalAvailable: this.physicalAvailable(), physical: this.physical };
+    const { physical } = this;
+    return { ...this.pool.context(this.advMode()), physicalAvailable: this.physicalAvailable(), physical };
   }
 
   /**

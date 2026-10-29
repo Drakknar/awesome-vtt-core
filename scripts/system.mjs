@@ -86,7 +86,8 @@ export const offersDamage = (result, autoDamage) => !!result?.damage && !(adapte
  * @param {ChatMessage} message    The roll's message.
  * @param {boolean} autoDamage     As for offersDamage.
  * @param {string} label           The button's text.
- * @param {() => Promise<boolean>} [before]  Runs first; false cancels (the phone: SotDL targets picked without the map).
+ * @param {() => Promise<boolean>} [before]  Runs first; false cancels (the phone: SotDL targets picked without the
+ *   map).
  * @returns {{label: string, run: () => Promise<unknown>}|undefined}
  */
 export function damageAction(result, message, autoDamage, label, before) {

@@ -19,9 +19,8 @@
  */
 
 import {
-  MAX_CURRENCY, MAX_QUANTITY, byName, signed, getToggleEffects, queueEffects, raceTolerant, waitFor, plainText, parseHTML,
-  onRollResult as onRollResultFor,
-  hpAmount, changeQuantity, toggleEffect, rollNotice
+  MAX_CURRENCY, MAX_QUANTITY, byName, signed, getToggleEffects, queueEffects, raceTolerant, waitFor, plainText,
+  parseHTML, onRollResult as onRollResultFor, hpAmount, changeQuantity, toggleEffect, rollNotice
 } from "./common.mjs";
 
 export { hpAmount, changeQuantity, toggleEffect, rollNotice };
@@ -45,7 +44,10 @@ export const FEATURES = {
   party: true,
   /** Using an item rolls straight away with the Next roll's boons or banes (useItem's mode). */
   itemRollMode: true,
-  /** An attribute rolled from the sheet can first ask for boons or banes (prompts.mjs askSheetRoll, the module's setting). */
+  /**
+   * An attribute rolled from the sheet can first ask for boons or banes (prompts.mjs askSheetRoll, the module's
+   * setting).
+   */
   abilityRollPrompt: true,
   /** Damage is never rolled after attacks by itself (see rollDamageAfterAttacks): the notice offers it. */
   autoDamage: false,
@@ -145,7 +147,8 @@ function health(actor) {
   const h = actor.system.characteristics?.health ?? {};
   const max = int(h.max);
   const damage = int(h.value);
-  return { value: Math.max(max - damage, 0), max, temp: 0, pct: max ? Math.clamp(((max - damage) / max) * 100, 0, 100) : 0 };
+  const pct = max ? Math.clamp(((max - damage) / max) * 100, 0, 100) : 0;
+  return { value: Math.max(max - damage, 0), max, temp: 0, pct };
 }
 
 const statusChoices = (actor, ids) => {
@@ -195,7 +198,8 @@ export function getSummary(actor) {
 /**
  * The five attributes, each rolled as a challenge (the Abilities tab).
  * @param {Actor} actor
- * @returns {{key: string, abbr: string, value: number, mod: string, save: null, proficient: boolean, checkLabel: string}[]}
+ * @returns {{key: string, abbr: string, value: number, mod: string, save: null, proficient: boolean,
+ *   checkLabel: string}[]}
  */
 export function getAbilities(actor) {
   return ATTRIBUTES.map(key => {
@@ -219,7 +223,8 @@ export const getSkills = () => [];
  * sheet shows, and the description, where the character builder writes the background tables and the interesting
  * thing. The description is enriched by the core's enrichSheet.
  * @param {Actor} actor
- * @returns {{facts: object[], appearance: object[], appearanceLabel: string, descriptionLabel: string, description: string}}
+ * @returns {{facts: object[], appearance: object[], appearanceLabel: string, descriptionLabel: string,
+ *   description: string}}
  */
 export function getBio(actor) {
   const names = type => actor.items.filter(i => i.type === type).map(i => i.name).join(", ");
@@ -349,8 +354,8 @@ export const canFavorite = actor => !!actor?.isOwner && (actor.type === "charact
 
 /**
  * Does using this item do something? Weapons, talents and spells always; other gear when it attacks, deals damage,
- * heals, has an extra effect, is a consumable or carries effects it applies when used. Only these can be favorites (the pill's
- * one-tap uses): a candle or a backpack would only post its card.
+ * heals, has an extra effect, is a consumable or carries effects it applies when used. Only these can be
+ * favorites (the pill's one-tap uses): a candle or a backpack would only post its card.
  * @param {Item|undefined} item
  * @returns {boolean}
  */
@@ -405,7 +410,8 @@ export const getFavoriteActions = actor => favoriteIds(actor)
 function blocked(actor, kind, attribute) {
   const attr = String(attribute ?? "").toLowerCase();
   if ( !(actor.system.maluses?.autoFail?.[kind]?.[attr] > 0) ) return false;
-  const msg = [...actor.allApplicableEffects()].find(e => e.flags?.demonlord?.warningMessage)?.flags.demonlord.warningMessage;
+  const warned = [...actor.allApplicableEffects()].find(e => e.flags?.demonlord?.warningMessage);
+  const msg = warned?.flags.demonlord.warningMessage;
   ui.notifications.error(msg ?? loc(`DL.AutoFail${kind.capitalize()}s`));
   return true;
 }
@@ -527,7 +533,9 @@ async function castSpell(actor, item, { boons, modifier, targets }) {
   const max = int(item.system.castings?.max);
   if ( max && (used >= max) ) return ui.notifications.warn(loc("DL.SpellMaxUsesReached"));
   await item.update({ "system.castings.value": String(used + 1) });
-  if ( attacks && targets.length ) for ( const target of targets ) await actor.useSpell(item, boons, modifier, [target]);
+  if ( attacks && targets.length ) {
+    for ( const target of targets ) await actor.useSpell(item, boons, modifier, [target]);
+  }
   else await actor.useSpell(item, attacks ? boons : 0, attacks ? modifier : 0);
 }
 
@@ -627,7 +635,9 @@ export function toggleCondition(actor, id) {
     if ( active ) await raceTolerant(() => actor.toggleStatusEffect(id, { active }));
     // Off: every effect of the actor with the status, as the system's own findDeleteEffect. Core's toggle only finds
     // the status's static _id, and the system adds some with random ids (Unconscious when Dying, see fixStatusIds).
-    else for ( const effect of actor.effects.filter(e => e.statuses.has(id)) ) await raceTolerant(() => effect.delete());
+    else {
+      for ( const effect of actor.effects.filter(e => e.statuses.has(id)) ) await raceTolerant(() => effect.delete());
+    }
     await waitFor(() => actor.statuses.has(id) === active, 2000);
   });
 }
@@ -639,7 +649,8 @@ export const longRest = actor => actor.restActor(24, true, true, true);
  * Insanity and corruption, changed with − / + in quick actions.
  * @param {Actor} actor
  * @param {Set<string>} toggled
- * @returns {{exhaustion: null, concentration: object[], tracks: object[], quickConditions: object[], effects: object[]}}
+ * @returns {{exhaustion: null, concentration: object[], tracks: object[], quickConditions: object[],
+ *   effects: object[]}}
  */
 export function getQuickActions(actor, toggled = new Set()) {
   const c = actor.system.characteristics ?? {};
@@ -978,7 +989,9 @@ export async function rollDamageFrom(message) {
   const html = await message.renderHTML();
   const buttons = [...html.querySelectorAll(".roll-damage")];
   if ( !buttons.length ) return;
-  damageGroup = { actor: cardSubject(html).actor, expected: buttons.length, totals: new Map(), until: Date.now() + DAMAGE_GROUP_MS };
+  damageGroup = {
+    actor: cardSubject(html).actor, expected: buttons.length, totals: new Map(), until: Date.now() + DAMAGE_GROUP_MS
+  };
   for ( const button of buttons ) button.click();
 }
 

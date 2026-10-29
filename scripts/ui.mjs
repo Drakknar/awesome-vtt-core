@@ -292,7 +292,8 @@ export function handleMessageClick(event, target, messageSelector) {
  * @param {Actor|Item|ActiveEffect} doc
  * @returns {Actor|undefined}
  */
-export const actorOf = doc => (doc instanceof Actor ? doc : doc.parent instanceof Actor ? doc.parent : doc.parent?.parent);
+export const actorOf = doc => (doc instanceof Actor ? doc
+  : doc.parent instanceof Actor ? doc.parent : doc.parent?.parent);
 
 /**
  * Call `fn(doc)` whenever an actor, or one of its items or effects, is created, changed or deleted.

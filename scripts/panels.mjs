@@ -53,7 +53,8 @@ export class CompendiumPanel {
   async context() {
     const { query, results, searching } = this;
     const entry = this.entry ? { ...this.entry, add: this.#addTarget() } : null;
-    return { query, results, entry, searching, short: query.trim().length < compendium.MIN_QUERY, ...(await this.#browser()) };
+    const short = query.trim().length < compendium.MIN_QUERY;
+    return { query, results, entry, searching, short, ...(await this.#browser()) };
   }
 
   /**

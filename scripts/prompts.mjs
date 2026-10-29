@@ -42,7 +42,8 @@ const CHANNEL = "module.awesome-vtt-core";
 const MAX_KEY = 200;
 
 /**
- * Watch for prompts (chat messages, turns and initiative) and hand them to the module; close those answered on the player's other devices.
+ * Watch for prompts (chat messages, turns and initiative) and hand them to the module; close those answered on
+ * the player's other devices.
  * @param {object} options
  * @param {function(Prompt): void} options.show          Show (queue) a prompt.
  * @param {function(string): void} options.close         Close a prompt by key (answered on another device).
@@ -199,7 +200,8 @@ function requestPrompts(message, mine) {
   if ( !CONFIG.DND5E.requests?.[message.system?.handler] ) return [];
   const label = loc(message.system.button?.label ?? "") || loc("AVTTC.Prompt.Request.Go");
   const icon = message.system.button?.icon || "fa-solid fa-bell";
-  const actors = unique((message.system.targets ?? []).filter(t => !t.result).map(t => fromUuidQuiet(t.actor))).filter(mine);
+  const waiting = (message.system.targets ?? []).filter(t => !t.result);
+  const actors = unique(waiting.map(t => fromUuidQuiet(t.actor))).filter(mine);
   return actors.map(actor => ({
     key: `request:${message.id}:${actor.uuid}`,
     kind: "request",

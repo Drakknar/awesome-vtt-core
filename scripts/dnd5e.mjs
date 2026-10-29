@@ -138,7 +138,8 @@ export function getSummary(actor) {
  * (traits, ideals, bonds, flaws), appearance and the biography. The phone has no full sheet to read them on.
  * The biography is enriched by the core's enrichSheet.
  * @param {Actor} actor
- * @returns {{facts: object[], appearance: object[], appearanceLabel: string, descriptionLabel: string, description: string}}
+ * @returns {{facts: object[], appearance: object[], appearanceLabel: string, descriptionLabel: string,
+ *   description: string}}
  */
 export function getBio(actor) {
   const d = actor.system.details ?? {};
@@ -189,7 +190,9 @@ export function getSkills(actor) {
   return Object.entries(CONFIG.DND5E.skills)
     .map(([key, cfg]) => {
       const s = actor.system.skills?.[key] ?? {};
-      return { key, label: loc(cfg.label), total: signed(s.total ?? 0), passive: s.passive ?? 10, proficient: (s.value ?? 0) > 0 };
+      return {
+        key, label: loc(cfg.label), total: signed(s.total ?? 0), passive: s.passive ?? 10, proficient: (s.value ?? 0) > 0
+      };
     })
     .sort((a, b) => a.label.localeCompare(b.label));
 }
@@ -297,7 +300,9 @@ export function getSpells(actor) {
   };
   const spells = actor.items.filter(i => i.type === "spell").sort((a, b) => a.name.localeCompare(b.name));
   const groups = spellLevels(actor)
-    .map(({ level, label, slots }) => ({ label, slots, items: spells.filter(s => s.system.level === level).map(toEntry) }))
+    .map(({ level, label, slots }) => ({
+      label, slots, items: spells.filter(s => s.system.level === level).map(toEntry)
+    }))
     .filter(g => g.items.length);
   const pact = pactSlots(actor);
   if ( pact ) groups.push({ label: loc("AVTTC.Sheet.PactSlots"), items: [], slots: pact });
@@ -757,7 +762,8 @@ const QUICK_STATUSES = ["prone", "dodging", "hiding", "invisible"];
  * Data for quick actions: exhaustion, concentration, a few common conditions, and toggleable effects.
  * @param {Actor5e} actor
  * @param {Set<string>} [toggled]  Effect uuids toggled during this session, kept in the list after being enabled.
- * @returns {{exhaustion: {value: number, max: number}, concentration: object[], tracks: object[], quickConditions: object[], effects: object[]}}
+ * @returns {{exhaustion: {value: number, max: number}, concentration: object[], tracks: object[],
+ *   quickConditions: object[], effects: object[]}}
  */
 export function getQuickActions(actor, toggled = new Set()) {
   const sys = actor.system;
@@ -767,7 +773,10 @@ export function getQuickActions(actor, toggled = new Set()) {
     id, label: loc(statusById.get(id).name), img: statusById.get(id).img, active: actor.statuses.has(id)
   }));
   return {
-    exhaustion: { value: exhaustionEffect(actor)?.system.level ?? sys.attributes?.exhaustion ?? 0, max: CONFIG.DND5E.conditionTypes?.exhaustion?.levels ?? 6 },
+    exhaustion: {
+      value: exhaustionEffect(actor)?.system.level ?? sys.attributes?.exhaustion ?? 0,
+      max: CONFIG.DND5E.conditionTypes?.exhaustion?.levels ?? 6
+    },
     concentration,
     tracks: [],
     quickConditions,
@@ -1033,7 +1042,8 @@ export function rollDamageAfterAttacks(applies) {
 export async function rollDamageFrom(message) {
   if ( !message?.isAuthor || (message.type !== "attack") ) return;
   const origin = message.getOriginatingMessage?.() ?? message;
-  const activity = origin.getAssociatedActivity?.({ scaled: true }) ?? message.getAssociatedActivity?.({ scaled: true });
+  const activity = origin.getAssociatedActivity?.({ scaled: true })
+    ?? message.getAssociatedActivity?.({ scaled: true });
   if ( typeof activity?.rollDamage !== "function" ) return;
   const { ability, ammunitionItem: ammunition, mode: attackMode } = message.system ?? {};
   const config = { ability, attackMode, isCritical: message.rolls[0]?.isCritical === true };

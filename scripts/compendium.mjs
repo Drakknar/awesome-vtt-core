@@ -92,7 +92,8 @@ export function listPacks() {
  * @param {string} packId          The compendium's collection id.
  * @param {string|null} folderId   A folder inside the compendium, or null for its top level.
  * @param {number} limit           How many entries to show.
- * @returns {Promise<object|null>} {id, title, path, folders, entries, more, total}, or null for an unknown or hidden compendium.
+ * @returns {Promise<object|null>} {id, title, path, folders, entries, more, total}, or null for an unknown or
+ *   hidden compendium.
  */
 export async function browse(packId, folderId, limit = BROWSE_PAGE) {
   const pack = game.packs.get(packId);
