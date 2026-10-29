@@ -1,0 +1,66 @@
+name: Checks
+
+# Runs on every pull request (Dependabot's included) and on pushes to main.
+# The module has no build step, so this checks what Foundry would trip over
+# when loading it: script syntax, JSON files, files module.json points to,
+# and Handlebars template syntax. actionlint checks the workflows themselves.
+# Not a required check yet: pull requests opened by the Compatibility review
+# use GITHUB_TOKEN, which doesn't trigger this workflow.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  module:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Script syntax
+        run: find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check
+
+      - name: JSON files and module.json paths
+        shell: python
+        run: |
+          import glob, json, os, sys
+
+          ok = True
+          for path in ["module.json", *glob.glob("lang/*.json"), *glob.glob("*.webmanifest")]:
+              try:
+                  with open(path, encoding="utf-8") as f:
+                      json.load(f)
+              except ValueError as e:
+                  print(f"::error file={path}::invalid JSON: {e}")
+                  ok = False
+
+          with open("module.json", encoding="utf-8") as f:
+              module = json.load(f)
+          paths = module.get("esmodules", []) + module.get("scripts", []) + module.get("styles", [])
+          paths += [lang["path"] for lang in module.get("languages", [])]
+          for path in paths:
+              if not os.path.isfile(path):
+                  print(f"::error file=module.json::{path} does not exist")
+                  ok = False
+
+          sys.exit(0 if ok else 1)
+
+      - name: Template syntax
+        if: hashFiles('templates/**/*.hbs') != ''
+        # Foundry v14 ships Handlebars 4.7; precompiling parses every template.
+        run: npx --yes handlebars@4.7.8 templates -e hbs -f /dev/null
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
