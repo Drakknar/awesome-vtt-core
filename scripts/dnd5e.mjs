@@ -191,7 +191,8 @@ export function getSkills(actor) {
     .map(([key, cfg]) => {
       const s = actor.system.skills?.[key] ?? {};
       return {
-        key, label: loc(cfg.label), total: signed(s.total ?? 0), passive: s.passive ?? 10, proficient: (s.value ?? 0) > 0
+        key, label: loc(cfg.label), total: signed(s.total ?? 0), passive: s.passive ?? 10,
+        proficient: (s.value ?? 0) > 0
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));
