@@ -6,11 +6,12 @@
 
 import {
   MAX_QUANTITY, MAX_CURRENCY, byName, signed, getToggleEffects, queueEffects, raceTolerant, waitFor, plainText,
-  onRollResult as onRollResultFor
+  onRollResult as onRollResultFor,
+  hpAmount, changeQuantity, toggleEffect, rollNotice
 } from "./common.mjs";
 
 // System-neutral helpers the shared code reaches through this adapter (see system.mjs).
-export { hpAmount, changeQuantity, toggleEffect, rollNotice } from "./common.mjs";
+export { hpAmount, changeQuantity, toggleEffect, rollNotice };
 
 const loc = key => (key ? game.i18n.localize(key) : "");
 
@@ -29,7 +30,7 @@ export const FEATURES = {
   // Checks, saves and skills from the sheet can first ask for advantage (prompts.mjs askSheetRoll; the module's
   // per-browser setting, off by default in dnd5e). dnd5e's own dialog is skipped, as before.
   abilityRollPrompt: true,
-  /** rollDamageAfterAttacks rolls attack damage by itself (when the module's setting allows it). */
+  /** RollDamageAfterAttacks rolls attack damage by itself (when the module's setting allows it). */
   autoDamage: true
 };
 
@@ -40,36 +41,66 @@ export const SHEET_TABS = ["actions", "skills", "spells", "abilities", "inventor
 export const ROLL_MODES = ["normal", "adv", "dis"];
 export const rollModeLabel = () => null;
 export const rollModeShort = () => null;
-/** The modules' own "Next roll" heading; no scale under the three choices. */
+/**
+ * The modules' own "Next roll" heading; no scale under the three choices.
+ * @returns {null}
+ */
 export const rollModeScale = () => null;
 
-/** The dice pool's single d20 under a roll mode (rolled twice, keep the higher or lower), or null. */
+/**
+ * The dice pool's single d20 under a roll mode (rolled twice, keep the higher or lower), or null.
+ * @param {string} mode
+ * @returns {string|null}
+ */
 export const poolD20 = mode => ({ adv: "2d20kh", dis: "2d20kl" })[mode] ?? null;
 
-/** The rests offered in quick actions: a button each, with its sheet action. */
+/**
+ * The rests offered in quick actions: a button each, with its sheet action.
+ * @returns {{action: string, icon: string, label: string}[]}
+ */
 export const getRests = () => [
   { action: "shortRest", icon: "fa-mug-hot", label: loc("AVTTC.Rest.short") },
   { action: "longRest", icon: "fa-campground", label: loc("AVTTC.Rest.long") }
 ];
 
-/** Trackers changed with − / + in quick actions (none in dnd5e; exhaustion has its own line). */
+/**
+ * Trackers changed with − / + in quick actions (none in dnd5e; exhaustion has its own line).
+ * @returns {null}
+ */
 export const changeTrack = () => null;
 
-/** Fast / slow turns are SotDL's; dnd5e rolls initiative. */
+/**
+ * Fast / slow turns are SotDL's; dnd5e rolls initiative.
+ * @returns {null}
+ */
 export const turnSpeed = () => null;
 export const setTurnSpeed = () => null;
 
-/** Roll results for the seat and phone notices, as summarizeRoll() sees them. */
+/**
+ * Roll results for the seat and phone notices, as summarizeRoll() sees them.
+ * @param {function(object, ChatMessage): void} fn
+ * @param {object} options
+ * @returns {void}
+ */
 export const onRollResult = (fn, options = {}) => onRollResultFor(fn, { ...options, summarize: summarizeRoll });
 
-/** Advantage mode → dnd5e roll process config. */
+/**
+ * Advantage mode → dnd5e roll process config.
+ * @param {string} mode
+ * @returns {{advantage: boolean, disadvantage: boolean}}
+ */
 function advConfig(mode) {
   return { advantage: mode === "adv", disadvantage: mode === "dis" };
 }
 
-/** d20 rolls skip the dnd5e configuration dialog; advantage comes from the module's own choice (`mode`). */
+/** D20 rolls skip the dnd5e configuration dialog; advantage comes from the module's own choice (`mode`). */
 const NO_DIALOG = { configure: false };
 
+/**
+ * The pill's summary of a character: name, level, HP, stats, death saves and conditions.
+ * @param {Actor} actor
+ * @returns {object}
+ */
 export function getSummary(actor) {
   const sys = actor.system;
   const hp = sys.attributes.hp ?? {};
@@ -106,6 +137,8 @@ export function getSummary(actor) {
  * The Bio tab (read-only), as dnd5e's Biography tab: species, background, classes, alignment, faith, personality
  * (traits, ideals, bonds, flaws), appearance and the biography. The phone has no full sheet to read them on.
  * The biography is enriched by the core's enrichSheet.
+ * @param {Actor} actor
+ * @returns {{facts: object[], appearance: object[], appearanceLabel: string, descriptionLabel: string, description: string}}
  */
 export function getBio(actor) {
   const d = actor.system.details ?? {};
@@ -128,6 +161,11 @@ export function getBio(actor) {
   };
 }
 
+/**
+ * The abilities with their score, modifier and save, for the Abilities tab.
+ * @param {Actor} actor
+ * @returns {{key: string, abbr: string, value: number, mod: string, save: string, proficient: boolean}[]}
+ */
 export function getAbilities(actor) {
   return Object.entries(CONFIG.DND5E.abilities).map(([key, cfg]) => {
     const a = actor.system.abilities?.[key] ?? {};
@@ -142,6 +180,11 @@ export function getAbilities(actor) {
   });
 }
 
+/**
+ * The skills with their total, passive score and proficiency, sorted by name.
+ * @param {Actor} actor
+ * @returns {{key: string, label: string, total: string, passive: number, proficient: boolean}[]}
+ */
 export function getSkills(actor) {
   return Object.entries(CONFIG.DND5E.skills)
     .map(([key, cfg]) => {
@@ -151,7 +194,11 @@ export function getSkills(actor) {
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
-/** Groups of usable items: favorites, weapons, spells by level, features, consumables. */
+/**
+ * Groups of usable items: favorites, weapons, spells by level, features, consumables.
+ * @param {Actor} actor
+ * @returns {{label: string, items: object[], slots?: object|null}[]}
+ */
 export function getActions(actor) {
   const toEntry = item => {
     const uses = item.system.uses;
@@ -194,7 +241,11 @@ export function getActions(actor) {
   return groups;
 }
 
-/** Spell levels 0–9 with their label and remaining slots (null for cantrips or without slots). */
+/**
+ * Spell levels 0–9 with their label and remaining slots (null for cantrips or without slots).
+ * @param {Actor} actor
+ * @returns {{level: number, label: string, slots: {key: string, value: number, max: number}|null}[]}
+ */
 function spellLevels(actor) {
   return Array.from({ length: 10 }, (_, level) => {
     const slot = actor.system.spells?.[`spell${level}`];
@@ -206,7 +257,11 @@ function spellLevels(actor) {
   });
 }
 
-/** Pact magic slots, if the actor has any. */
+/**
+ * Pact magic slots, if the actor has any.
+ * @param {Actor} actor
+ * @returns {{key: string, value: number, max: number}|null}
+ */
 function pactSlots(actor) {
   const pact = actor.system.spells?.pact;
   return pact?.max ? { key: "pact", value: pact.value, max: pact.max } : null;
@@ -216,6 +271,8 @@ function pactSlots(actor) {
  * Every spell the character has, by level, for the Spells tab: whether it can be cast now (prepared, or from a
  * method that doesn't prepare), and whether the player may prepare or unprepare it (not always-prepared ones).
  * Slot counts are shown per level, as in Actions.
+ * @param {Actor} actor
+ * @returns {{label: string, slots: object|null, items: object[]}[]}
  */
 export function getSpells(actor) {
   const states = CONFIG.DND5E.spellPreparationStates;
@@ -247,7 +304,12 @@ export function getSpells(actor) {
   return groups;
 }
 
-/** Prepare or unprepare a spell (not always-prepared ones, nor methods without preparation). */
+/**
+ * Prepare or unprepare a spell (not always-prepared ones, nor methods without preparation).
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @returns {Promise<Item>|undefined}
+ */
 export function togglePrepared(actor, itemId) {
   const item = actor.items.get(itemId);
   const s = item?.system;
@@ -261,16 +323,35 @@ export function togglePrepared(actor, itemId) {
 /** Most favorites the table pill shows on its favorites row. */
 const FAVORITES_MAX = 8;
 
-/** Can this actor keep favorites (dnd5e characters can)? */
+/**
+ * Can this actor keep favorites (dnd5e characters can)?
+ * @param {Actor|null} actor
+ * @returns {boolean}
+ */
 export const canFavorite = actor => typeof actor?.system.addFavorite === "function";
 
-/** The relative uuid dnd5e uses for an item favorite. */
+/**
+ * The relative uuid dnd5e uses for an item favorite.
+ * @param {Actor} actor
+ * @param {Item} item
+ * @returns {string}
+ */
 const favoriteId = (actor, item) => foundry.utils.buildRelativeUuid(item, actor);
 
-/** Is this item one of the actor's dnd5e favorites? */
+/**
+ * Is this item one of the actor's dnd5e favorites?
+ * @param {Actor|null} actor
+ * @param {Item} item
+ * @returns {boolean}
+ */
 export const isFavorite = (actor, item) => !!actor?.system.hasFavorite?.(favoriteId(actor, item));
 
-/** Add an item to the actor's dnd5e favorites, or remove it, as the dnd5e sheet's star does. */
+/**
+ * Add an item to the actor's dnd5e favorites, or remove it, as the dnd5e sheet's star does.
+ * @param {Actor|null} actor
+ * @param {string} itemId
+ * @returns {Promise<Actor>|undefined}
+ */
 export function toggleFavorite(actor, itemId) {
   const item = actor?.items.get(itemId);
   if ( !item || !canFavorite(actor) ) return;
@@ -280,6 +361,7 @@ export function toggleFavorite(actor, itemId) {
 
 /**
  * The actor's favorite items, in dnd5e's favorites order (the table pill's favorites row), at most FAVORITES_MAX.
+ * @param {Actor} actor
  * @returns {{id: string, name: string, img: string}[]}
  */
 export function getFavoriteActions(actor) {
@@ -292,7 +374,11 @@ export function getFavoriteActions(actor) {
     .map(({ id, name, img }) => ({ id, name, img }));
 }
 
-/** Cantrips, prepared/always-prepared spells, and spells from methods that don't require preparation. */
+/**
+ * Cantrips, prepared/always-prepared spells, and spells from methods that don't require preparation.
+ * @param {Item} spell
+ * @returns {boolean}
+ */
 function isSpellAvailable(spell) {
   const s = spell.system;
   if ( s.level === 0 ) return true;
@@ -317,7 +403,12 @@ export const rollSkill = (actor, skill, mode) =>
 export const rollDeathSave = (actor, mode) =>
   actor.rollDeathSave({ ...advConfig(mode) }, NO_DIALOG);
 
-/** Item use keeps dnd5e's own dialog logic (e.g. choosing a spell slot); the roll mode isn't used (FEATURES). */
+/**
+ * Item use keeps dnd5e's own dialog logic (e.g. choosing a spell slot); the roll mode isn't used (FEATURES).
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @returns {Promise<object|undefined>|undefined}
+ */
 export const useItem = (actor, itemId) => actor.items.get(itemId)?.use();
 
 /* -------------------------------------------- */
@@ -326,6 +417,7 @@ export const useItem = (actor, itemId) => actor.items.get(itemId)?.use();
 
 /**
  * Whether the character can gain a level (below dnd5e's maximum character level), and whether it is due by XP.
+ * @param {Actor|null} actor
  * @returns {{canLevel: boolean, ready: boolean}}
  */
 export function levelInfo(actor) {
@@ -338,6 +430,8 @@ export function levelInfo(actor) {
 /**
  * Open a level-up window: Hero Mancer's (its public API, `openLevelUp(actor)`) when that module is active, otherwise
  * the character's own sheet, where dnd5e levels up from the class level selector. No levelling logic of our own.
+ * @param {Actor|null} actor
+ * @returns {Promise<unknown>|undefined}
  */
 export function openLevelUp(actor) {
   if ( !actor ) return;
@@ -352,6 +446,10 @@ export const HP_MODES = ["damage", "heal", "temp"];
 /**
  * Apply an HP field entry in one of HP_MODES. dnd5e's applyDamage takes damage as positive and healing as negative;
  * applyTempHP only raises temporary hit points, per the rules.
+ * @param {Actor|null} actor
+ * @param {"damage"|"heal"|"temp"} mode
+ * @param {number} amount
+ * @returns {Promise<Actor>|undefined}
  */
 export function applyHpChange(actor, mode, amount) {
   if ( !actor || !amount ) return;
@@ -365,6 +463,9 @@ export const toggleInspiration = actor =>
 /**
  * Toggle a condition. For a condition with levels (exhaustion), dnd5e's toggle only ever adds a level, so here a
  * tap clears it when it's on and adds one level when it's off; the levels themselves are set with the − / + controls.
+ * @param {Actor} actor
+ * @param {string} id
+ * @returns {Promise<void>|undefined}
  */
 export function toggleCondition(actor, id) {
   if ( CONFIG.DND5E.conditionTypes?.[id]?.levels && (id === "exhaustion") ) {
@@ -381,7 +482,13 @@ export function toggleCondition(actor, id) {
   });
 }
 
-/** Change an item's remaining uses by one (stored by dnd5e as uses spent). */
+/**
+ * Change an item's remaining uses by one (stored by dnd5e as uses spent).
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @param {number} delta
+ * @returns {Promise<Item>|undefined}
+ */
 export function changeUses(actor, itemId, delta) {
   const item = actor.items.get(itemId);
   const max = item?.system.uses?.max;
@@ -390,7 +497,13 @@ export function changeUses(actor, itemId, delta) {
   return item.update({ "system.uses.spent": max - value });
 }
 
-/** Change the remaining slots of a spell level ("spell1"…"spell9", or "pact") by one. */
+/**
+ * Change the remaining slots of a spell level ("spell1"…"spell9", or "pact") by one.
+ * @param {Actor} actor
+ * @param {string} key
+ * @param {number} delta
+ * @returns {Promise<Actor>|undefined}
+ */
 export function changeSlots(actor, key, delta) {
   const slot = actor.system.spells?.[key];
   if ( !slot?.max || !/^(spell[1-9]|pact)$/.test(key) ) return;
@@ -401,7 +514,12 @@ export function changeSlots(actor, key, delta) {
 export const shortRest = actor => actor.shortRest();
 export const longRest = actor => actor.longRest();
 
-/** The actor's combatants in a combat (the viewed one by default) that haven't rolled initiative. */
+/**
+ * The actor's combatants in a combat (the viewed one by default) that haven't rolled initiative.
+ * @param {Actor|null} actor
+ * @param {Combat|null} combat
+ * @returns {Combatant[]}
+ */
 export const initiativeDue = (actor, combat = game.combat) =>
   combat?.combatants.filter(c => (c.actorId === actor?.id) && (c.initiative === null) && !c.isDefeated) ?? [];
 
@@ -412,6 +530,7 @@ export const initiativeDue = (actor, combat = game.combat) =>
  * Actor#rollInitiative does the rest (roll message, tiebreaker, fixed scores, physical dice).
  * @param {Actor} actor
  * @param {"normal"|"adv"|"dis"} [mode]
+ * @returns {Promise<Combat>|null}
  */
 export function rollInitiative(actor, mode = "normal") {
   if ( !initiativeDue(actor).length ) return null;
@@ -427,12 +546,20 @@ export function rollInitiative(actor, mode = "normal") {
 export const INVENTORY_TYPES = ["weapon", "equipment", "consumable", "tool", "container", "loot"];
 
 
-/** The actor's coins, one entry per kind (the inventory and the shared inventory). */
+/**
+ * The actor's coins, one entry per kind (the inventory and the shared inventory).
+ * @param {Actor|null} actor
+ * @returns {{key: string, label: string, abbr: string, icon: string, value: number}[]}
+ */
 export const getCurrency = actor => Object.entries(CONFIG.DND5E.currencies ?? {}).map(([key, cfg]) => ({
   key, label: loc(cfg.label), abbr: loc(cfg.abbreviation), icon: cfg.icon, value: actor?.system.currency?.[key] ?? 0
 }));
 
-/** Currency, carrying weight, attunement and carried items grouped by type (container contents nested). */
+/**
+ * Currency, carrying weight, attunement and carried items grouped by type (container contents nested).
+ * @param {Actor} actor
+ * @returns {{currency: object[], encumbrance: object|null, attunement: object|null, groups: object[]}}
+ */
 export function getInventory(actor) {
   const sys = actor.system;
   const enc = sys.attributes?.encumbrance ?? {};
@@ -477,7 +604,12 @@ export function getInventory(actor) {
 }
 
 
-/** The description a player may see (dnd5e hides the real one of unidentified items from players). */
+/**
+ * The description a player may see (dnd5e hides the real one of unidentified items from players).
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @returns {Promise<string>}
+ */
 export async function getItemDescription(actor, itemId) {
   const item = actor.items.get(itemId);
   if ( !item ) return "";
@@ -488,6 +620,13 @@ export async function getItemDescription(actor, itemId) {
   });
 }
 
+/**
+ * Set how many coins of one kind the actor has (kept from 0 to MAX_CURRENCY).
+ * @param {Actor} actor
+ * @param {string} key
+ * @param {number|string} value
+ * @returns {Promise<Actor>|undefined}
+ */
 export function setCurrency(actor, key, value) {
   if ( !(key in (CONFIG.DND5E.currencies ?? {})) ) return;
   const n = Math.clamp(Math.floor(Number(value) || 0), 0, MAX_CURRENCY);
@@ -502,6 +641,10 @@ export function setCurrency(actor, key, value) {
 /**
  * Move coins of one kind from one actor to another (e.g. a character and the party), at most what the giver has.
  * The giver is updated first, so a failed second update never creates coins.
+ * @param {Actor|null} from
+ * @param {Actor|null} to
+ * @param {string} key
+ * @param {number|string} amount
  * @returns {Promise<number>}  How many coins were moved.
  */
 export async function moveCurrency(from, to, key, amount) {
@@ -514,7 +657,13 @@ export async function moveCurrency(from, to, key, amount) {
   return n;
 }
 
-/** A loose item with this name and type (not a container, not inside one), to add quantities to. */
+/**
+ * A loose item with this name and type (not a container, not inside one), to add quantities to.
+ * @param {Actor} actor
+ * @param {string} name
+ * @param {string} type
+ * @returns {Item|undefined}
+ */
 function stackFor(actor, name, type) {
   const lower = name.toLowerCase();
   return actor.items.find(i => (i.type === type) && (type !== "container") && !i.system.container
@@ -524,7 +673,13 @@ function stackFor(actor, name, type) {
 const addToStack = (stack, quantity) =>
   stack.update({ "system.quantity": Math.min((stack.system.quantity ?? 0) + quantity, MAX_QUANTITY) });
 
-/** Add an item typed by name, as loot: more of a loose loot item with that name, or a new one. */
+/**
+ * Add an item typed by name, as loot: more of a loose loot item with that name, or a new one.
+ * @param {Actor|null} actor
+ * @param {string} name
+ * @param {number|string} quantity
+ * @returns {Promise<Item|undefined>|null}
+ */
 export function addNamedItem(actor, name, quantity) {
   name = String(name ?? "").trim().slice(0, 80);
   if ( !actor?.isOwner || !name ) return null;
@@ -553,7 +708,13 @@ export async function copyItems(items, target) {
   }
 }
 
-/** Move a whole stack (with any container contents) from one actor to another. */
+/**
+ * Move a whole stack (with any container contents) from one actor to another.
+ * @param {Actor|null} from
+ * @param {Actor|null} to
+ * @param {string} itemId
+ * @returns {Promise<Item|undefined>}
+ */
 export async function moveItem(from, to, itemId) {
   const item = from?.items.get(itemId);
   if ( !item || !INVENTORY_TYPES.includes(item.type) || !from.isOwner || !to?.isOwner || (from === to) ) return;
@@ -561,11 +722,23 @@ export async function moveItem(from, to, itemId) {
   return item.delete({ deleteContents: true });
 }
 
+/**
+ * Equip or unequip an item that can be equipped.
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @returns {Promise<Item>|undefined}
+ */
 export function toggleEquipped(actor, itemId) {
   const item = actor.items.get(itemId);
   if ( item && ("equipped" in item.system) ) return item.update({ "system.equipped": !item.system.equipped });
 }
 
+/**
+ * Attune to an item that allows attunement, or end it.
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @returns {Promise<Item>|undefined}
+ */
 export function toggleAttuned(actor, itemId) {
   const item = actor.items.get(itemId);
   if ( item && ["required", "optional"].includes(item.system.attunement) ) {
@@ -584,6 +757,7 @@ const QUICK_STATUSES = ["prone", "dodging", "hiding", "invisible"];
  * Data for quick actions: exhaustion, concentration, a few common conditions, and toggleable effects.
  * @param {Actor5e} actor
  * @param {Set<string>} [toggled]  Effect uuids toggled during this session, kept in the list after being enabled.
+ * @returns {{exhaustion: {value: number, max: number}, concentration: object[], tracks: object[], quickConditions: object[], effects: object[]}}
  */
 export function getQuickActions(actor, toggled = new Set()) {
   const sys = actor.system;
@@ -602,7 +776,12 @@ export function getQuickActions(actor, toggled = new Set()) {
 }
 
 
-/** End one concentration, if it is still going (it may have been broken by a save, or ended on another device). */
+/**
+ * End one concentration, if it is still going (it may have been broken by a save, or ended on another device).
+ * @param {Actor} actor
+ * @param {string} effectId
+ * @returns {Promise<void>}
+ */
 export function endConcentration(actor, effectId) {
   return queueEffects(actor, async () => {
     if ( !actor.effects.has(effectId) ) return;
@@ -615,8 +794,11 @@ export function endConcentration(actor, effectId) {
 /* -------------------------------------------- */
 
 
-
-/** dnd5e's exhaustion effect (fixed id) on this actor, if any. */
+/**
+ * dnd5e's exhaustion effect (fixed id) on this actor, if any.
+ * @param {Actor} actor
+ * @returns {ActiveEffect|undefined}
+ */
 const exhaustionEffect = actor => actor.effects.get(dnd5e.utils.staticID("dnd5eexhaustion"));
 
 /**
@@ -625,16 +807,30 @@ const exhaustionEffect = actor => actor.effects.get(dnd5e.utils.staticID("dnd5ee
  * Going through the actor's exhaustion number made dnd5e edit that effect afterwards, unawaited, from a difference
  * that could be stale: a change could do nothing, or delete an effect that was already gone. So the effect is
  * changed directly, and changes for an actor are queued so they never overlap.
+ * @param {Actor} actor
+ * @param {number} delta
+ * @returns {Promise<void>}
  */
 export function changeExhaustion(actor, delta) {
   return queueExhaustion(actor, current => current + Math.sign(delta));
 }
 
-/** Set the exhaustion level (e.g. 0 to clear it), through the same queue. */
+/**
+ * Set the exhaustion level (e.g. 0 to clear it), through the same queue.
+ * @param {Actor} actor
+ * @param {number} level
+ * @returns {Promise<void>}
+ */
 function setExhaustion(actor, level) {
   return queueExhaustion(actor, () => level);
 }
 
+/**
+ * Queue a change of the exhaustion level, worked out from the current level when it runs.
+ * @param {Actor} actor
+ * @param {(current: number) => number} levelFrom
+ * @returns {Promise<void>}
+ */
 function queueExhaustion(actor, levelFrom) {
   const run = async () => {
     const max = CONFIG.DND5E.conditionTypes?.exhaustion?.levels ?? 6;
@@ -655,18 +851,31 @@ function queueExhaustion(actor, levelFrom) {
 }
 
 
-
 /* -------------------------------------------- */
 /*  Prompted rolls                              */
 /* -------------------------------------------- */
 
-/** Concentration saving throw, as requested by dnd5e's concentration prompt message. */
-export const rollConcentration = (actor, { ability, dc } = {}, mode) =>
+/**
+ * Concentration saving throw, as requested by dnd5e's concentration prompt message.
+ * @param {Actor} actor
+ * @param {object} root0
+ * @param {string} root0.ability
+ * @param {number} root0.dc
+ * @param {string} mode
+ * @returns {Promise<Roll[]|null>}
+ */
+export const rollConcentration = (actor, { ability, dc } = {}, mode = "normal") =>
   actor.rollConcentration({ ...(ability ? { ability } : {}), target: dc ?? 10, ...advConfig(mode) }, NO_DIALOG);
 
 /**
  * Saving throw against a save activity's chat card, rolled the way dnd5e's own card button does
  * (SaveActivity#rollSave): same ability, DC and activity bonus, and linked to the card so its outcome is tracked.
+ * @param {Actor} actor
+ * @param {Activity} activity
+ * @param {ChatMessage} message
+ * @param {string} ability
+ * @param {string} mode
+ * @returns {Promise<Roll[]|null>}
  */
 export async function rollActivitySave(actor, activity, message, ability, mode) {
   const dc = activity.save?.dc?.value;
@@ -683,6 +892,9 @@ export async function rollActivitySave(actor, activity, message, ability, mode) 
 /**
  * Answer a GM request card (group rest, save or skill check) for one actor, the way dnd5e's card button does,
  * including linking the result back to the request.
+ * @param {Actor} actor
+ * @param {ChatMessage} message
+ * @returns {Promise<unknown>}
  */
 export async function answerRequest(actor, message) {
   const handler = CONFIG.DND5E.requests?.[message.system?.handler];
@@ -701,10 +913,13 @@ export async function answerRequest(actor, message) {
 /** Target types (CONFIG.DND5E.individualTargetTypes) that mean "one or more specific tokens". */
 const TARGETED_TYPES = new Set(["ally", "enemy", "creature", "object", "creatureOrObject", "any", "willing"]);
 
-/** SotDL's item-level targets question; dnd5e asks per activity (needsTargets). */
+/**
+ * SotDL's item-level targets question; dnd5e asks per activity (needsTargets).
+ * @returns {boolean}
+ */
 export const itemNeedsTargets = () => false;
 
-/** dnd5e's chat cards take their targets from the user's (the phone's bridge); SotDL lists its buttons. */
+/** In dnd5e, chat cards take their targets from the user's (the phone's bridge); SotDL lists its buttons. */
 export const CARD_TARGET_BUTTONS = null;
 
 /**
@@ -714,6 +929,7 @@ export const CARD_TARGET_BUTTONS = null;
  * @param {object} [options]
  * @param {boolean} [options.areasNeedTargets]  Areas (measured templates): true where there is no map to place
  *   them on (the player picks the creatures inside instead); false where the area is placed on the map after use.
+ * @returns {boolean}
  */
 export function needsTargets(activity, { areasNeedTargets = false } = {}) {
   const { affects, template } = activity.target ?? {};
@@ -736,6 +952,12 @@ export function usageProblem(activity, usageConfig) {
   return missingSlot(activity, usageConfig) ?? missingUses(activity, usageConfig);
 }
 
+/**
+ * A spell slot the activity needs and the actor doesn't have (see usageProblem), or null.
+ * @param {Activity} activity
+ * @param {object} usageConfig
+ * @returns {{reason: "noSlot", name: string, level: number}|null}
+ */
 function missingSlot(activity, usageConfig) {
   if ( !activity.requiresSpellSlot || !activity.consumption?.spellSlot ) return null;
   if ( !usageConfig.consume || (usageConfig.consume.spellSlot === false) || usageConfig.cause ) return null;
@@ -749,6 +971,12 @@ function missingSlot(activity, usageConfig) {
   return available ? null : { reason: "noSlot", name: activity.item.name, level };
 }
 
+/**
+ * Uses the activity consumes and doesn't have (see usageProblem), or null.
+ * @param {Activity} activity
+ * @param {object} usageConfig
+ * @returns {{reason: "noUses", name: string, value: number, cost: number}|null}
+ */
 function missingUses(activity, usageConfig) {
   const consume = usageConfig.consume;
   if ( !consume || !consume.resources ) return null;
@@ -780,7 +1008,8 @@ function missingUses(activity, usageConfig) {
  * @param {(actor: Actor) => boolean} applies
  */
 export function rollDamageAfterAttacks(applies) {
-  // dnd5e.rollAttackV2 runs before ammunition is used up (an emptied stack may be deleted), so the item can still be read.
+  // The dnd5e.rollAttackV2 hook runs before ammunition is used up (an emptied stack may be deleted), so the item can
+  // still be read.
   Hooks.on("dnd5e.rollAttackV2", (rolls, { subject } = {}) => {
     const roll = rolls?.[0];
     const actor = subject?.actor;
@@ -799,6 +1028,7 @@ export function rollDamageAfterAttacks(applies) {
  * attack mode, critical when the attack was, the spell's scaling from the card) but without the damage dialog.
  * Offered on the attack's notice (summarizeRoll's `damage`).
  * @param {ChatMessage} message  The attack roll message.
+ * @returns {Promise<void>}
  */
 export async function rollDamageFrom(message) {
   if ( !message?.isAuthor || (message.type !== "attack") ) return;
@@ -811,33 +1041,50 @@ export async function rollDamageFrom(message) {
   return rollActivityDamage(activity, config, "from the notice");
 }
 
-/** Roll an activity's damage without dnd5e's dialog; a failure is reported, not thrown. */
+/**
+ * Roll an activity's damage without dnd5e's dialog; a failure is reported, not thrown.
+ * @param {Activity} activity
+ * @param {object} config
+ * @param {string} when
+ */
 async function rollActivityDamage(activity, config, when) {
   try {
     await activity.rollDamage(config, { configure: false });
-  } catch(err) {
+  } catch ( err ) {
     console.error(`awesome-vtt-core | Rolling damage ${when} failed`, err);
     ui.notifications.error(err.message);
   }
 }
 
-/** Has this activity damage to roll? The same test as dnd5e's Damage button on the attack card. */
+/**
+ * Has this activity damage to roll? The same test as dnd5e's Damage button on the attack card.
+ * @param {Activity|undefined} activity
+ * @returns {boolean}
+ */
 function hasDamageToRoll(activity) {
   if ( typeof activity?.rollDamage !== "function" ) return false;
   return !!activity.damage?.parts?.length || !!activity.item?.system.properties?.has("amm");
 }
 
-/** Has this attack message's activity damage to roll? */
+/**
+ * Has this attack message's activity damage to roll?
+ * @param {ChatMessage} message
+ * @returns {boolean}
+ */
 const attackHasDamage = message => hasDamageToRoll(message.getAssociatedActivity?.());
 
 /* -------------------------------------------- */
 
 
-/** A dnd5e world setting, or undefined if it can't be read (then treated as the most private choice). */
+/**
+ * A dnd5e world setting, or undefined if it can't be read (then treated as the most private choice).
+ * @param {string} key
+ * @returns {unknown}
+ */
 function dnd5eSetting(key) {
   try {
     return game.settings.get("dnd5e", key);
-  } catch(err) {
+  } catch {
     return undefined;
   }
 }
@@ -847,15 +1094,21 @@ function dnd5eSetting(key) {
  * (ChatMessage5e#shouldDisplayChallenge): the roller always sees it. A shared screen is read by everyone at the
  * table, so there it follows the "challenge visibility" setting as for another player watching a player's roll:
  * "all" and "player" show it, "none" doesn't.
+ * @param {boolean} shared
+ * @returns {boolean}
  */
 const challengeVisible = shared => game.user.isGM || !shared || ["all", "player"].includes(dnd5eSetting("challengeVisibility"));
 
-/** May hit or miss be shown? dnd5e's "attack roll visibility": shown to players unless "none" (for the roller too). */
+/**
+ * May hit or miss be shown? dnd5e's "attack roll visibility": shown to players unless "none" (for the roller too).
+ * @returns {boolean}
+ */
 const attackResultVisible = () => game.user.isGM || ["all", "hideAC"].includes(dnd5eSetting("attackRollVisibility"));
 
 /**
  * Hits and misses of an attack against its targets with a known AC, as dnd5e evaluates them (a natural 20 hits,
  * a natural 1 misses). dnd5e counts a target without an AC as a miss; those are left out here.
+ * @param {ChatMessage} message
  * @returns {{hit: number, miss: number}|null}
  */
 function attackHits(message) {

@@ -13,10 +13,16 @@ import * as demonlord from "./demonlord.mjs";
 
 const ADAPTERS = { dnd5e, demonlord };
 
-/** Is this world's game system supported? */
+/**
+ * Is this world's game system supported?
+ * @returns {boolean}
+ */
 export const isSupported = () => game.system?.id in ADAPTERS;
 
-/** The adapter of this world's system (dnd5e's when the system isn't supported; callers check isSupported first). */
+/**
+ * The adapter of this world's system (dnd5e's when the system isn't supported; callers check isSupported first).
+ * @returns {object}
+ */
 export const adapter = () => ADAPTERS[game.system?.id] ?? dnd5e;
 
 /**
@@ -69,6 +75,7 @@ export function fixStatusIds() {
  * (FEATURES.autoDamage with the module's "damage after attacks" setting on).
  * @param {object} result       From the adapter's summarizeRoll.
  * @param {boolean} autoDamage  The module's setting for rolling damage after attacks.
+ * @returns {boolean}
  */
 export const offersDamage = (result, autoDamage) => !!result?.damage && !(adapter().FEATURES.autoDamage && autoDamage);
 
@@ -80,6 +87,7 @@ export const offersDamage = (result, autoDamage) => !!result?.damage && !(adapte
  * @param {boolean} autoDamage     As for offersDamage.
  * @param {string} label           The button's text.
  * @param {() => Promise<boolean>} [before]  Runs first; false cancels (the phone: SotDL targets picked without the map).
+ * @returns {{label: string, run: () => Promise<unknown>}|undefined}
  */
 export function damageAction(result, message, autoDamage, label, before) {
   if ( !offersDamage(result, autoDamage) ) return undefined;

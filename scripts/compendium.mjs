@@ -21,7 +21,11 @@ export const cleanQuery = query => String(query ?? "").slice(0, MAX_QUERY);
 const packs = () => game.packs.filter(p => TYPES.includes(p.documentName) && p.visible);
 const entryUuid = (pack, e) => e.uuid ?? `Compendium.${pack.collection}.${pack.documentName}.${e._id}`;
 
-/** Where a compendium comes from: its sidebar folder, else its system, module or the world. */
+/**
+ * Where a compendium comes from: its sidebar folder, else its system, module or the world.
+ * @param {CompendiumCollection} pack
+ * @returns {string}
+ */
 function packGroup(pack) {
   if ( pack.folder ) return pack.folder.name;
   const { packageType, packageName } = pack.metadata;
@@ -40,6 +44,7 @@ function packGroup(pack) {
  * @param {object} [options]
  * @param {string[]} [options.types]                 Document types searched (default Item and JournalEntry).
  * @param {(entry: object) => boolean} [options.filter]  Keep only index entries that pass (e.g. by item type).
+ * @returns {Promise<{uuid: string, name: string, img: string, pack: string}[]|null>}
  */
 export async function search(query, { types = TYPES, filter = () => true } = {}) {
   const q = cleanQuery(query).trim().toLowerCase();
@@ -61,7 +66,10 @@ export async function search(query, { types = TYPES, filter = () => true } = {})
 /*  Browsing                                    */
 /* -------------------------------------------- */
 
-/** All visible compendiums, grouped by origin and sorted by title. */
+/**
+ * All visible compendiums, grouped by origin and sorted by title.
+ * @returns {{label: string, packs: {id: string, title: string, icon: string, count: number|null}[]}[]}
+ */
 export function listPacks() {
   const groups = new Map();
   for ( const pack of packs() ) {
@@ -84,6 +92,7 @@ export function listPacks() {
  * @param {string} packId          The compendium's collection id.
  * @param {string|null} folderId   A folder inside the compendium, or null for its top level.
  * @param {number} limit           How many entries to show.
+ * @returns {Promise<object|null>} {id, title, path, folders, entries, more, total}, or null for an unknown or hidden compendium.
  */
 export async function browse(packId, folderId, limit = BROWSE_PAGE) {
   const pack = game.packs.get(packId);
@@ -119,13 +128,21 @@ export async function browse(packId, folderId, limit = BROWSE_PAGE) {
 /*  Preview                                     */
 /* -------------------------------------------- */
 
-/** An item's description HTML: dnd5e keeps it in `system.description.value`, SotDL in `system.description`. */
+/**
+ * An item's description HTML: dnd5e keeps it in `system.description.value`, SotDL in `system.description`.
+ * @param {Item} item
+ * @returns {string}
+ */
 function itemDescription(item) {
   const description = item.system?.description;
   return (typeof description === "string") ? description : (description?.value ?? "");
 }
 
-/** An entry's preview: an item's description, or a journal entry's text pages. */
+/**
+ * An entry's preview: an item's description, or a journal entry's text pages.
+ * @param {string} uuid
+ * @returns {Promise<{uuid: string, name: string, img: string, html: string, documentName: string, type: string}|null>}
+ */
 export async function openEntry(uuid) {
   const doc = await fromUuid(uuid).catch(() => null);
   if ( !doc ) return null;

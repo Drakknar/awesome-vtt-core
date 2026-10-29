@@ -22,6 +22,9 @@ let answering = false;
 
 const isIdList = list => Array.isArray(list) && (list.length <= MAX_IDS) && list.every(id => typeof id === "string");
 
+/**
+ * Listen on the core's socket channel, once: replies to this device's questions, and other devices' questions when answering.
+ */
 function listen() {
   if ( listening ) return;
   listening = true;
