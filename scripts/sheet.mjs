@@ -10,10 +10,15 @@ import { escapeHTML, sharedInventory } from "./ui.mjs";
 /**
  * The sheet's tabs come from the system adapter (SHEET_TABS), in the order the user chose (2026-10-04): actions,
  * skills, spells, abilities, inventory, status; a system without one (SotDL has no skills) leaves it out.
+ * @returns {string[]}
  */
 const sheetTabs = () => sys.SHEET_TABS;
 
-/** A known tab, or the first one. */
+/**
+ * A known tab, or the first one.
+ * @param {string|undefined} tab
+ * @returns {string}
+ */
 export const sheetTab = tab => (sheetTabs().includes(tab) ? tab : sheetTabs()[0]);
 
 /**
@@ -21,6 +26,7 @@ export const sheetTab = tab => (sheetTabs().includes(tab) ? tab : sheetTabs()[0]
  * @param {Actor} actor
  * @param {string} tab
  * @param {(id: string) => string} tabLabel  The module's label key for a tab, e.g. id => `AVTT.Sheet.Tab.${id}`.
+ * @returns {object}
  */
 export function sheetContext(actor, tab, tabLabel) {
   tab = sheetTab(tab);
@@ -43,7 +49,12 @@ export function sheetContext(actor, tab, tabLabel) {
   return context;
 }
 
-/** The parts of sheetContext's data that need async work: the Bio tab's description, enriched like a journal. */
+/**
+ * The parts of sheetContext's data that need async work: the Bio tab's description, enriched like a journal.
+ * @param {object} context
+ * @param {Actor} actor
+ * @returns {Promise<object>}
+ */
 export async function enrichSheet(context, actor) {
   if ( !context.bio ) return context;
   const TextEditor = foundry.applications.ux.TextEditor.implementation;
@@ -76,6 +87,7 @@ export const SHEET_ACTIONS = new Set([
  * @param {"normal"|"adv"|"dis"} [advMode]  For d20 rolls.
  * @param {object} [options]
  * @param {Set<string>} [options.toggled]  Effects toggled from the quick actions, kept in their list (see below).
+ * @returns {unknown|undefined} What the system adapter returns (often a Promise).
  */
 export function runSheetAction(actor, action, data, advMode = "normal", { toggled } = {}) {
   if ( !actor ) return;
@@ -116,7 +128,11 @@ export function runSheetAction(actor, action, data, advMode = "normal", { toggle
  */
 const QUICK_TABS = ["quick", "effects", "rest"];
 
-/** A known quick actions tab, or the first one. */
+/**
+ * A known quick actions tab, or the first one.
+ * @param {string|undefined} tab
+ * @returns {string}
+ */
 export const quickTab = tab => (QUICK_TABS.includes(tab) ? tab : QUICK_TABS[0]);
 
 /**
@@ -129,6 +145,7 @@ export const quickTab = tab => (QUICK_TABS.includes(tab) ? tab : QUICK_TABS[0]);
  * @param {Set<string>} options.toggled          Effects toggled this session, kept in the list once enabled.
  * @param {string} options.hpMode                The HP field's mode (sys.HP_MODES).
  * @param {(mode: string) => string} options.hpLabel  The module's label key for an HP mode.
+ * @returns {object}
  */
 export function quickActionsContext(actor, { tab, tabLabel, toggled, hpMode, hpLabel }) {
   const summary = sys.getSummary(actor);
@@ -149,7 +166,13 @@ export function quickActionsContext(actor, { tab, tabLabel, toggled, hpMode, hpL
   };
 }
 
-/** A changed sheet field (currency). Returns true if it was one. */
+/**
+ * A changed sheet field (currency). Returns true if it was one.
+ * @param {Actor|null} actor
+ * @param {string} name
+ * @param {string} value
+ * @returns {boolean}
+ */
 export function onSheetChange(actor, name, value) {
   if ( !actor || !name?.startsWith("currency.") ) return false;
   sys.setCurrency(actor, name.slice("currency.".length), value);
@@ -173,6 +196,9 @@ export async function toggleItemDetails(details, actor, itemId, emptyText, empty
 
 /**
  * Chat messages to show: the visible ones, optionally only those spoken as one actor, the most recent `limit`.
+ * @param {object} root0
+ * @param {string|null} root0.actorId
+ * @param {number} root0.limit
  * @returns {{messages: ChatMessage[], hasMore: boolean}}
  */
 export function chatMessages({ actorId = null, limit = Infinity } = {}) {
@@ -183,13 +209,20 @@ export function chatMessages({ actorId = null, limit = Infinity } = {}) {
 /** Chat filters: every visible message, or only those spoken as the character shown. */
 export const CHAT_FILTERS = ["all", "mine"];
 
-/** The actor id to filter a chat log by, for a filter and the character shown. */
+/**
+ * The actor id to filter a chat log by, for a filter and the character shown.
+ * @param {string} filter
+ * @param {Actor|null} actor
+ * @returns {string|null}
+ */
 export const chatActorId = (filter, actor) => ((filter === "mine") ? (actor?.id ?? null) : null);
 
 export const MAX_CHAT_TEXT = 2000;
 
 /**
  * Send chat text through Foundry's chat processing (so commands such as /r and whispers work), as the actor.
+ * @param {string} text
+ * @param {Actor|null} actor
  * @returns {Promise<boolean>}  Whether something was sent.
  */
 export async function sendChat(text, actor) {
@@ -200,6 +233,11 @@ export async function sendChat(text, actor) {
   return true;
 }
 
-/** Does a chat log (optionally filtered to one actor) show this message? */
+/**
+ * Does a chat log (optionally filtered to one actor) show this message?
+ * @param {ChatMessage} message
+ * @param {string|null} actorId
+ * @returns {boolean}
+ */
 export const chatShows = (message, actorId = null) =>
   message.visible && (!actorId || (message.speaker?.actor === actorId));

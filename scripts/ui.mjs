@@ -20,23 +20,37 @@ export const SECTION_ICONS = {
 /** The optional shared inventory module (its own folder); its panel is mounted in a "party" section. */
 export const SHARED_INVENTORY_ID = "awesome-vtt-shared-inventory";
 
-/** The shared inventory module's API, when it is installed and active, else null. */
+/**
+ * The shared inventory module's API, when it is installed and active, else null.
+ * @returns {object|null}
+ */
 export function sharedInventory() {
   const module = game.modules.get(SHARED_INVENTORY_ID);
   return (module?.active && module.api) ? module.api : null;
 }
 
-/** The sections shown now: SECTIONS, plus "party" while the shared inventory module is active. */
+/**
+ * The sections shown now: SECTIONS, plus "party" while the shared inventory module is active.
+ * @returns {string[]}
+ */
 export const sectionList = () => (sharedInventory() ? [...SECTIONS, "party"] : [...SECTIONS]);
 
-/** Text made safe for HTML. Unlike foundry.utils.escapeHTML, null and undefined give "". */
+/**
+ * Text made safe for HTML. Unlike foundry.utils.escapeHTML, null and undefined give "".
+ * @param {string|null|undefined} str
+ * @returns {string}
+ */
 export function escapeHTML(str) {
   const div = document.createElement("div");
   div.textContent = str ?? "";
   return div.innerHTML;
 }
 
-/** Put the cursor back at the end of a text field after a re-render (e.g. while typing a search). */
+/**
+ * Put the cursor back at the end of a text field after a re-render (e.g. while typing a search).
+ * @param {HTMLElement|null} root
+ * @param {string} name
+ */
 export function refocus(root, name) {
   const input = root?.querySelector(`input[name="${name}"]`);
   if ( !input ) return;
@@ -44,7 +58,13 @@ export function refocus(root, name) {
   input.setSelectionRange(input.value.length, input.value.length);
 }
 
-/** Mark the chosen button of a radio-like group without re-rendering (keeps typed values). */
+/**
+ * Mark the chosen button of a radio-like group without re-rendering (keeps typed values).
+ * @param {HTMLElement} root
+ * @param {string} action
+ * @param {string} key
+ * @param {string} value
+ */
 export function markChoice(root, action, key, value) {
   for ( const b of root.querySelectorAll(`[data-action="${action}"]`) ) {
     const selected = b.dataset[key] === value;
@@ -72,7 +92,7 @@ export async function runAction(target, busyActions, run, logPrefix, action = ta
   }
   try {
     await run();
-  } catch(err) {
+  } catch ( err ) {
     console.error(`${logPrefix} "${action}" failed`, err);
     ui.notifications.error(err.message);
   } finally {
@@ -83,7 +103,11 @@ export async function runAction(target, busyActions, run, logPrefix, action = ta
   }
 }
 
-/** Run a task that two controls share (e.g. Enter and a button), ignoring calls while it's running. */
+/**
+ * Run a task that two controls share (e.g. Enter and a button), ignoring calls while it's running.
+ * @param {(...args: any[]) => Promise<unknown>} task
+ * @returns {(...args: any[]) => Promise<unknown>}
+ */
 export function exclusive(task) {
   let running = false;
   return async (...args) => {
@@ -168,7 +192,11 @@ export function fillNoticeAction(el, action) {
   el.replaceChildren(icon, ` ${action.label}`);
 }
 
-/** What a notice button filled by fillNoticeAction does, once: later taps get nothing. */
+/**
+ * What a notice button filled by fillNoticeAction does, once: later taps get nothing.
+ * @param {HTMLElement} el
+ * @returns {Function|undefined}
+ */
 export function takeNoticeAction(el) {
   const run = noticeActions.get(el);
   noticeActions.delete(el);
@@ -178,6 +206,7 @@ export function takeNoticeAction(el) {
 /**
  * Text colour for a background colour: near-black or white, whichever contrasts more (WCAG relative luminance).
  * @param {string} hex  "#rrggbb"; anything else gives near-black.
+ * @returns {string}
  */
 export function inkFor(hex) {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex ?? "");
@@ -197,13 +226,17 @@ const DARK_INK = "#111";
 /*  Chat                                        */
 /* -------------------------------------------- */
 
-/** A message as Foundry (and dnd5e, via its render hook) draws it, an <li class="chat-message">, or null. */
+/**
+ * A message as Foundry (and dnd5e, via its render hook) draws it, an <li class="chat-message">, or null.
+ * @param {ChatMessage} message
+ * @returns {Promise<HTMLElement|null>}
+ */
 export async function renderMessage(message) {
   try {
     const html = await message.renderHTML();
     html.dataset.messageId ??= message.id;
     return html;
-  } catch(err) {
+  } catch ( err ) {
     console.error(`awesome-vtt-core | Failed to render chat message ${message.id}`, err);
     return null;
   }
@@ -236,6 +269,9 @@ export async function syncMessage(log, message, action, visible) {
 /**
  * Clicks inside a rendered chat message belong to Foundry and dnd5e (their listeners come with renderHTML).
  * Only the roll breakdown toggle is handled here, as core's chat log would.
+ * @param {Event} event
+ * @param {HTMLElement} target
+ * @param {string} messageSelector
  * @returns {boolean}  True if the click was inside a message (and must not be handled further).
  */
 export function handleMessageClick(event, target, messageSelector) {
@@ -251,10 +287,18 @@ export function handleMessageClick(event, target, messageSelector) {
 /*  Foundry hooks                               */
 /* -------------------------------------------- */
 
-/** The actor a changed document belongs to (the actor itself, or the actor of an item or effect). */
-export const actorOf = doc => (doc instanceof Actor ? doc : doc.parent instanceof Actor ? doc.parent : doc.parent?.parent);
+/**
+ * The actor a changed document belongs to (the actor itself, or the actor of an item or effect).
+ * @param {Actor|Item|ActiveEffect} doc
+ * @returns {Actor|undefined}
+ */
+export const actorOf = doc => (doc instanceof Actor ? doc
+  : doc.parent instanceof Actor ? doc.parent : doc.parent?.parent);
 
-/** Call `fn(doc)` whenever an actor, or one of its items or effects, is created, changed or deleted. */
+/**
+ * Call `fn(doc)` whenever an actor, or one of its items or effects, is created, changed or deleted.
+ * @param {function(Document): void} fn
+ */
 export function onActorDataChange(fn) {
   for ( const hook of ["updateActor", "createItem", "updateItem", "deleteItem",
     "createActiveEffect", "updateActiveEffect", "deleteActiveEffect"] ) {
@@ -262,7 +306,10 @@ export function onActorDataChange(fn) {
   }
 }
 
-/** Call `fn(message, action)` for created, changed and deleted chat messages. */
+/**
+ * Call `fn(message, action)` for created, changed and deleted chat messages.
+ * @param {function(ChatMessage, string): void} fn
+ */
 export function onChatChange(fn) {
   Hooks.on("createChatMessage", m => fn(m, "create"));
   Hooks.on("updateChatMessage", m => fn(m, "update"));
@@ -272,6 +319,7 @@ export function onChatChange(fn) {
 /**
  * Core opens User Configuration on every load for a player without an assigned character. Close that startup
  * window when `applies()` says so; it can still be opened by hand later. Register during module load.
+ * @param {() => boolean} applies
  */
 export function closeStartupUserConfig(applies) {
   let skip = true;

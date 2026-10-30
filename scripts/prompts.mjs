@@ -42,6 +42,8 @@ const CHANNEL = "module.awesome-vtt-core";
 const MAX_KEY = 200;
 
 /**
+ * Watch for prompts (chat messages, turns and initiative) and hand them to the module; close those answered on
+ * the player's other devices.
  * @param {object} options
  * @param {function(Prompt): void} options.show          Show (queue) a prompt.
  * @param {function(string): void} options.close         Close a prompt by key (answered on another device).
@@ -89,14 +91,21 @@ export function initPrompts({ show, close, enabled, isMine }) {
   deathSave();
 }
 
-/** Tell the player's other devices that a prompt was answered or dismissed here. */
+/**
+ * Tell the player's other devices that a prompt was answered or dismissed here.
+ * @param {string} key
+ */
 function promptDone(key) {
   if ( typeof key === "string" ) game.socket.emit(CHANNEL, { type: "promptDone", key: key.slice(0, MAX_KEY) });
 }
 
 const activeCombat = () => game.combats.find(c => c.active) ?? game.combat;
 
-/** Does this character have to make a death saving throw? */
+/**
+ * Does this character have to make a death saving throw?
+ * @param {Actor|null} actor
+ * @returns {boolean}
+ */
 function needsDeathSave(actor) {
   const hp = actor?.system.attributes?.hp;
   const death = actor?.system.attributes?.death;
@@ -110,6 +119,13 @@ function needsDeathSave(actor) {
 /*  dnd5e                                       */
 /* -------------------------------------------- */
 
+/**
+ * The dnd5e prompts in a new chat message (concentration, saves, GM requests), for the kinds that are on.
+ * @param {ChatMessage} message
+ * @param {function(string): boolean} enabled
+ * @param {function(Actor): boolean} mine
+ * @returns {Prompt[]}
+ */
 function promptsFromMessage(message, enabled, mine) {
   switch ( message.type ) {
     case "prompt": return enabled("concentration") ? concentrationPrompts(message, mine) : [];
@@ -119,6 +135,12 @@ function promptsFromMessage(message, enabled, mine) {
   }
 }
 
+/**
+ * The concentration save asked for by dnd5e's prompt message, if it is for one of this device's characters.
+ * @param {ChatMessage} message
+ * @param {function(Actor): boolean} mine
+ * @returns {Prompt[]}
+ */
 function concentrationPrompts(message, mine) {
   const button = message.system?.buttons?.find(b => b.type === "concentration");
   const actor = messageActor(message);
@@ -140,6 +162,12 @@ function concentrationPrompts(message, mine) {
   }];
 }
 
+/**
+ * A save prompt for each of this device's characters that a save activity's message targets.
+ * @param {ChatMessage} message
+ * @param {function(Actor): boolean} mine
+ * @returns {Prompt[]}
+ */
 function savePrompts(message, mine) {
   const activity = message.getAssociatedActivity?.() ?? fromUuidQuiet(message.system?.activity?.uuid);
   if ( activity?.type !== "save" ) return [];
@@ -162,11 +190,18 @@ function savePrompts(message, mine) {
   })).filter(p => p.choices.length);
 }
 
+/**
+ * A prompt for each of this device's characters that a GM request lists and that hasn't answered yet.
+ * @param {ChatMessage} message
+ * @param {function(Actor): boolean} mine
+ * @returns {Prompt[]}
+ */
 function requestPrompts(message, mine) {
   if ( !CONFIG.DND5E.requests?.[message.system?.handler] ) return [];
   const label = loc(message.system.button?.label ?? "") || loc("AVTTC.Prompt.Request.Go");
   const icon = message.system.button?.icon || "fa-solid fa-bell";
-  const actors = unique((message.system.targets ?? []).filter(t => !t.result).map(t => fromUuidQuiet(t.actor))).filter(mine);
+  const waiting = (message.system.targets ?? []).filter(t => !t.result);
+  const actors = unique(waiting.map(t => fromUuidQuiet(t.actor))).filter(mine);
   return actors.map(actor => ({
     key: `request:${message.id}:${actor.uuid}`,
     kind: "request",
@@ -183,21 +218,35 @@ function requestPrompts(message, mine) {
 /*  Shadow of the Demon Lord                    */
 /* -------------------------------------------- */
 
-/** The attribute key for a (localized) attribute name, as the system's challenge card carries it. */
+/**
+ * The attribute key for a (localized) attribute name, as the system's challenge card carries it.
+ * @param {string|undefined} name
+ * @returns {string|null}
+ */
 function attributeKey(name) {
   const lower = String(name ?? "").toLowerCase();
   return Object.entries(CONFIG.DL?.attributes ?? {})
     .find(([key, label]) => (key === lower) || (loc(label).toLowerCase() === lower))?.[0] ?? null;
 }
 
-/** "with 2 boons" style text for a request's own boons (or banes), or "". */
+/**
+ * "with 2 boons" style text for a request's own boons (or banes), or "".
+ * @param {number} n
+ * @returns {string}
+ */
 function boonsText(n) {
   if ( !n ) return "";
   const key = n > 0 ? (n === 1 ? "AVTTC.Boons.boon" : "AVTTC.Boons.boons") : (n === -1 ? "AVTTC.Boons.bane" : "AVTTC.Boons.banes");
   return fmt(key, { n: Math.abs(n) });
 }
 
-/** The system's "make a challenge roll" card, whispered to the owners of the character it is for. */
+/**
+ * The system's "make a challenge roll" card, whispered to the owners of the character it is for.
+ * @param {ChatMessage} message
+ * @param {function(string): boolean} enabled
+ * @param {function(Actor): boolean} mine
+ * @returns {Prompt[]}
+ */
 function challengePrompts(message, enabled, mine) {
   if ( !enabled("request") ) return [];
   const card = parseHTML(message.content);
@@ -229,6 +278,10 @@ function challengePrompts(message, enabled, mine) {
 /**
  * SotDL: an attribute rolled from the sheet (FEATURES.abilityRollPrompt), asking for boons or banes first. Shown like
  * the other prompts, with the Next roll choice preset to what is armed; only on this device.
+ * @param {Actor|null} actor
+ * @param {string} action
+ * @param {DOMStringMap} data
+ * @returns {Prompt|null}
  */
 function attributeRollPrompt(actor, action, data) {
   const key = data.ability;
@@ -253,7 +306,13 @@ function attributeRollPrompt(actor, action, data) {
   };
 }
 
-/** dnd5e: an ability check, saving throw or skill rolled from the sheet, asking for advantage first. */
+/**
+ * For dnd5e: an ability check, saving throw or skill rolled from the sheet, asking for advantage first.
+ * @param {Actor|null} actor
+ * @param {string} action
+ * @param {DOMStringMap} data
+ * @returns {Prompt|null}
+ */
 function checkRollPrompt(actor, action, data) {
   const skill = action === "rollSkill";
   const key = skill ? data.skill : data.ability;
@@ -288,6 +347,7 @@ function checkRollPrompt(actor, action, data) {
  * @param {Actor} actor
  * @param {string} action     The sheet button's action (rollAbility, rollSave, rollSkill).
  * @param {DOMStringMap} data The button's dataset (ability or skill).
+ * @returns {boolean}
  */
 export function askSheetRoll(queue, actor, action, data) {
   if ( !sys.FEATURES.abilityRollPrompt ) return false;
@@ -304,7 +364,10 @@ export function askSheetRoll(queue, actor, action, data) {
 /**
  * One prompt per character with combatants without initiative in the active encounter: a fast or slow turn where
  * the system has them (SotDL's default mode), otherwise the core's rollInitiative (dnd5e: with the Next roll).
+ * @param {function(string): boolean} enabled
+ * @param {function(Actor): boolean} mine
  * @param {boolean} rollMode  Does the roll take the Next roll choice?
+ * @returns {Prompt[]}
  */
 function initiativePrompts(enabled, mine, rollMode) {
   if ( !enabled("initiative") || game.user.isGM ) return [];
@@ -349,6 +412,12 @@ const BUILDERS = {
 
 /* -------------------------------------------- */
 
+/**
+ * The death save prompt for a dying character's turn.
+ * @param {Actor} actor
+ * @param {string} key
+ * @returns {Prompt}
+ */
 function deathSavePrompt(actor, key) {
   const death = actor.system.attributes?.death ?? {};
   const pips = n => [0, 1, 2].map(i => i < (n ?? 0));
@@ -377,13 +446,17 @@ function deathSavePrompt(actor, key) {
  */
 export class PromptQueue {
   #items = [];
+
   #seen = new Set();
 
   constructor(onChange) {
     this.onChange = onChange;
   }
 
-  /** The prompt on screen, or null. */
+  /**
+   * The prompt on screen, or null.
+   * @returns {Prompt|null}
+   */
   get current() {
     return this.#items[0] ?? null;
   }
@@ -391,6 +464,7 @@ export class PromptQueue {
   /**
    * Template data for the current prompt, or null.
    * @param {object[]|null} modes  The Normal / Advantage / Disadvantage choice (advModeChoices), for d20 prompts.
+   * @returns {object|null}
    */
   context(modes) {
     const prompt = this.current;
@@ -405,12 +479,19 @@ export class PromptQueue {
     };
   }
 
-  /** Is a prompt matching `test` shown or waiting? (e.g. the same attribute roll, tapped twice) */
+  /**
+   * Is a prompt matching `test` shown or waiting? (e.g. the same attribute roll, tapped twice)
+   * @param {function(Prompt): boolean} test
+   * @returns {boolean}
+   */
   has(test) {
     return this.#items.some(test);
   }
 
-  /** Prompts waiting after the current one. */
+  /**
+   * Prompts waiting after the current one.
+   * @returns {number}
+   */
   get waiting() {
     return Math.max(this.#items.length - 1, 0);
   }
@@ -422,7 +503,10 @@ export class PromptQueue {
     this.onChange();
   }
 
-  /** Remove a prompt by key (answered on another device); nothing is announced. */
+  /**
+   * Remove a prompt by key (answered on another device); nothing is announced.
+   * @param {string} key
+   */
   close(key) {
     this.#seen.add(key);
     const before = this.#items.length;
@@ -442,6 +526,7 @@ export class PromptQueue {
    * @param {number} index
    * @param {function(function(string): Promise): Promise} d20  The module's d20 wrapper (passes the advantage mode,
    *   then resets it); used for prompts with a roll mode.
+   * @returns {Promise<unknown>}
    */
   async choose(index, d20) {
     const prompt = this.current;

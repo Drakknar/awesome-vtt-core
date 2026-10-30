@@ -34,24 +34,33 @@ export class CompendiumPanel {
   }
 
   query = "";
+
   results = null;
+
   entry = null;
+
   searching = false;
+
   browsing = { pack: null, folder: null, limit: compendium.BROWSE_PAGE };
 
   /** Increases with each search, so a slower earlier search can't replace newer results. */
   #searchId = 0;
 
-  /** Template data: the search, its results or open entry, or (with an empty search box) the browser. */
+  /**
+   * Template data: the search, its results or open entry, or (with an empty search box) the browser.
+   * @returns {Promise<object>}
+   */
   async context() {
     const { query, results, searching } = this;
     const entry = this.entry ? { ...this.entry, add: this.#addTarget() } : null;
-    return { query, results, entry, searching, short: query.trim().length < compendium.MIN_QUERY, ...(await this.#browser()) };
+    const short = query.trim().length < compendium.MIN_QUERY;
+    return { query, results, entry, searching, short, ...(await this.#browser()) };
   }
 
   /**
    * "Add to inventory" for the opened entry: an inventory item (the adapter's INVENTORY_TYPES), a character this user
    * owns, and the GM's world setting on. Returns the character's name and how many were added so far, or null.
+   * @returns {{name: string, added: number}|null}
    */
   #addTarget() {
     const entry = this.entry;
@@ -61,7 +70,10 @@ export class CompendiumPanel {
     return { name: actor.name, added: entry.added?.[actor.id] ?? 0 };
   }
 
-  /** With an empty search box, the compendium list or the open compendium (folder) is shown. */
+  /**
+   * With an empty search box, the compendium list or the open compendium (folder) is shown.
+   * @returns {Promise<object>}
+   */
   async #browser() {
     if ( this.query || this.entry ) return {};
     const b = this.browsing;
@@ -73,7 +85,10 @@ export class CompendiumPanel {
     return { packs: compendium.listPacks() };
   }
 
-  /** Typing in the search field. */
+  /**
+   * Typing in the search field.
+   * @param {string} value
+   */
   onInput(value) {
     this.query = compendium.cleanQuery(value);
     this.searchSoon();
@@ -83,6 +98,7 @@ export class CompendiumPanel {
    * Search Item and Journal compendiums by name, from MIN_QUERY characters on.
    * @param {object} [options]
    * @param {boolean} [options.live]  Typing: keep the previous results (and the cursor) until the new ones are ready.
+   * @returns {Promise<void>}
    */
   async search({ live = false } = {}) {
     const query = compendium.cleanQuery(this.query);
@@ -107,7 +123,12 @@ export class CompendiumPanel {
     refocus(this.root(), "compQuery");
   }
 
-  /** Run a compendium action from a [data-action] button. */
+  /**
+   * Run a compendium action from a [data-action] button.
+   * @param {string} action
+   * @param {HTMLElement} target
+   * @returns {Promise<unknown>}
+   */
   async handle(action, target) {
     const data = target.dataset;
     switch ( action ) {
@@ -170,11 +191,17 @@ export class JournalPanel {
 
   /** The open entry and page, or a shared image; none means the list. */
   uuid = null;
+
   pageId = null;
+
   image = null;
+
   query = "";
 
-  /** Is the list of journals shown (rather than an entry or image)? */
+  /**
+   * Is the list of journals shown (rather than an entry or image)?
+   * @returns {boolean}
+   */
   get showsList() {
     return !this.uuid && !this.image;
   }
@@ -191,7 +218,10 @@ export class JournalPanel {
     return context;
   }
 
-  /** Typing in the filter field. */
+  /**
+   * Typing in the filter field.
+   * @param {string} value
+   */
   onInput(value) {
     this.query = journal.cleanQuery(value);
     this.renderSoon();
@@ -202,7 +232,12 @@ export class JournalPanel {
     return this.render();
   }
 
-  /** Run a journal action from a [data-action] button. */
+  /**
+   * Run a journal action from a [data-action] button.
+   * @param {string} action
+   * @param {HTMLElement} target
+   * @returns {Promise<unknown>}
+   */
   async handle(action, target) {
     const data = target.dataset;
     switch ( action ) {

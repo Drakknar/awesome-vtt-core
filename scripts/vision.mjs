@@ -22,6 +22,10 @@ let answering = false;
 
 const isIdList = list => Array.isArray(list) && (list.length <= MAX_IDS) && list.every(id => typeof id === "string");
 
+/**
+ * Listen on the core's socket channel, once: replies to this device's questions, and other devices' questions
+ * when answering.
+ */
 function listen() {
   if ( listening ) return;
   listening = true;
@@ -66,7 +70,8 @@ export function visibleHere(actor, sceneId, tokenIds) {
     const token = canvas.tokens.get(id);
     if ( !token || token.document.hidden ) return false;
     if ( token.document.actorId === actor.id ) return true;
-    const config = visibility._createVisibilityTestConfig(token.document.getVisibilityTestPoints(), { tolerance: 0, object: token });
+    const points = token.document.getVisibilityTestPoints();
+    const config = visibility._createVisibilityTestConfig(points, { tolerance: 0, object: token });
     if ( lights.some(light => light.testVisibility(config) === true) ) return true;
     // As core: a blinded source loses basic sight and light perception, not its other senses (e.g. tremorsense).
     return sources.some(source => Object.entries(source.object.document.detectionModes ?? {})

@@ -5,6 +5,9 @@
 
 const CORE_ID = "awesome-vtt-core";
 
+/**
+ * Register the core's world settings, once (the first module to call it does).
+ */
 export function registerCoreSettings() {
   if ( game.settings.settings.has(`${CORE_ID}.compendiumAdd`) ) return;
   // Players may add items they open in the Compendium panel to their character's inventory (GM's choice, on).
@@ -17,7 +20,11 @@ export function registerCoreSettings() {
   });
 }
 
-/** A core setting's value, or undefined before it is registered. */
+/**
+ * A core setting's value, or undefined before it is registered.
+ * @param {string} key
+ * @returns {unknown}
+ */
 export function coreSetting(key) {
   return game.settings.settings.has(`${CORE_ID}.${key}`) ? game.settings.get(CORE_ID, key) : undefined;
 }

@@ -8,21 +8,40 @@ const loc = key => (key ? game.i18n.localize(key) : "");
 export const MAX_QUANTITY = 9999;
 export const MAX_CURRENCY = 9999999;
 
-/** Sort by name. */
+/**
+ * Sort by name.
+ * @param {{name: string}} a
+ * @param {{name: string}} b
+ * @returns {number}
+ */
 export const byName = (a, b) => a.name.localeCompare(b.name);
 
-/** A number with its sign, e.g. "+2" or "-1". */
+/**
+ * A number with its sign, e.g. "+2" or "-1".
+ * @param {number} n
+ * @returns {string}
+ */
 export const signed = n => (n >= 0 ? `+${n}` : `${n}`);
 
 const MAX_HP_INPUT = 999;
 
-/** A typed HP amount as a whole number from 0 to 999 (0 when not a number). */
+/**
+ * A typed HP amount as a whole number from 0 to 999 (0 when not a number).
+ * @param {unknown} raw
+ * @returns {number}
+ */
 export function hpAmount(raw) {
   const n = Math.floor(Number(raw));
   return Number.isFinite(n) ? Math.clamp(n, 0, MAX_HP_INPUT) : 0;
 }
 
-/** Change an item's quantity by one (kept from 0 to MAX_QUANTITY). */
+/**
+ * Change an item's quantity by one (kept from 0 to MAX_QUANTITY).
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @param {number} delta
+ * @returns {Promise<Item>|undefined}
+ */
 export function changeQuantity(actor, itemId, delta) {
   const item = actor.items.get(itemId);
   if ( !item || !("quantity" in item.system) ) return;
@@ -37,6 +56,9 @@ export function changeQuantity(actor, itemId, delta) {
 /**
  * Effects a player switches on and off (e.g. Rage, Bladesong): effects on the actor or its items that are disabled,
  * timed, or were toggled this session. Conditions, concentration and enchantments are left out.
+ * @param {Actor} actor
+ * @param {Set<string>} toggled
+ * @returns {{uuid: string, name: string, img: string, source: string, active: boolean}[]}
  */
 export function getToggleEffects(actor, toggled) {
   const list = [];
@@ -60,6 +82,12 @@ export function getToggleEffects(actor, toggled) {
  */
 const effectQueue = new WeakMap();
 
+/**
+ * Run an effect change for an actor after the ones already queued for it (see effectQueue).
+ * @param {Actor} actor
+ * @param {() => Promise<void>} task
+ * @returns {Promise<void>}
+ */
 export function queueEffects(actor, task) {
   const next = (effectQueue.get(actor) ?? Promise.resolve()).then(task, task);
   effectQueue.set(actor, next.catch(() => {}));
@@ -70,11 +98,13 @@ export function queueEffects(actor, task) {
  * Run an effect change that another device (e.g. the table screen and a phone, both owning the character) may have
  * made at the same moment. Foundry then reports "already exists" or "does not exist"; either way the effect is
  * already in the state that was asked for, so it's treated as done.
+ * @param {() => Promise<unknown>} change
+ * @returns {Promise<unknown>}
  */
 export async function raceTolerant(change) {
   try {
     return await change();
-  } catch(err) {
+  } catch ( err ) {
     if ( /already exists|does not exist/i.test(err?.message ?? "") ) {
       console.debug("awesome-vtt-core | Effect already changed elsewhere:", err.message);
       return null;
@@ -83,7 +113,11 @@ export async function raceTolerant(change) {
   }
 }
 
-/** Resolve once `test()` is true, or after `timeout` ms. */
+/**
+ * Resolve once `test()` is true, or after `timeout` ms.
+ * @param {() => boolean} test
+ * @param {number} timeout
+ */
 export function waitFor(test, timeout) {
   return new Promise(resolve => {
     const start = Date.now();
@@ -92,7 +126,12 @@ export function waitFor(test, timeout) {
   });
 }
 
-/** Switch an effect of this actor (or one of its items) on or off. */
+/**
+ * Switch an effect of this actor (or one of its items) on or off.
+ * @param {Actor} actor
+ * @param {string} uuid
+ * @returns {Promise<void>|undefined}
+ */
 export function toggleEffect(actor, uuid) {
   const initial = fromUuidSync(uuid, { strict: false });
   if ( !initial ) return;
@@ -106,7 +145,11 @@ export function toggleEffect(actor, uuid) {
   });
 }
 
-/** The actor a chat message is about: its associated actor, or the speaker's. */
+/**
+ * The actor a chat message is about: its associated actor, or the speaker's.
+ * @param {ChatMessage} message
+ * @returns {Actor|null}
+ */
 export const messageActor = message => message.getAssociatedActor?.() ?? ChatMessage.getSpeakerActor(message.speaker);
 
 /* -------------------------------------------- */
@@ -140,7 +183,10 @@ export function onRollResult(fn, { shared = false, summarize, enabled = () => tr
 
 const DICE_ANIMATION_LIMIT = 15000;
 
-/** Wait for Dice So Nice's animation of a message, if any (at most DICE_ANIMATION_LIMIT ms). */
+/**
+ * Wait for Dice So Nice's animation of a message, if any (at most DICE_ANIMATION_LIMIT ms).
+ * @param {ChatMessage} message
+ */
 async function afterDiceAnimation(message) {
   const dice3d = game.dice3d;
   if ( !message.isRoll || (typeof dice3d?.waitFor3DAnimationByMessageID !== "function") ) return;
@@ -152,10 +198,18 @@ async function afterDiceAnimation(message) {
   ]);
 }
 
-/** The body of chat HTML, parsed in an inert document (nothing in it loads or runs). */
+/**
+ * The body of chat HTML, parsed in an inert document (nothing in it loads or runs).
+ * @param {string|null|undefined} html
+ * @returns {HTMLElement}
+ */
 export const parseHTML = html => new DOMParser().parseFromString(String(html ?? ""), "text/html").body;
 
-/** Plain text of chat HTML (see parseHTML). */
+/**
+ * Plain text of chat HTML (see parseHTML).
+ * @param {string|null|undefined} html
+ * @returns {string}
+ */
 export const plainText = html => parseHTML(html).textContent.trim();
 
 /**

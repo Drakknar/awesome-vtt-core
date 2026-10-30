@@ -19,11 +19,11 @@
  */
 
 import {
-  MAX_CURRENCY, MAX_QUANTITY, byName, signed, getToggleEffects, queueEffects, raceTolerant, waitFor, plainText, parseHTML,
-  onRollResult as onRollResultFor
+  MAX_CURRENCY, MAX_QUANTITY, byName, signed, getToggleEffects, queueEffects, raceTolerant, waitFor, plainText,
+  parseHTML, onRollResult as onRollResultFor, hpAmount, changeQuantity, toggleEffect, rollNotice
 } from "./common.mjs";
 
-export { hpAmount, changeQuantity, toggleEffect, rollNotice } from "./common.mjs";
+export { hpAmount, changeQuantity, toggleEffect, rollNotice };
 
 const CORE_ID = "awesome-vtt-core";
 const loc = key => (key ? game.i18n.localize(key) : "");
@@ -44,11 +44,17 @@ export const FEATURES = {
   party: true,
   /** Using an item rolls straight away with the Next roll's boons or banes (useItem's mode). */
   itemRollMode: true,
-  /** An attribute rolled from the sheet can first ask for boons or banes (prompts.mjs askSheetRoll, the module's setting). */
+  /**
+   * An attribute rolled from the sheet can first ask for boons or banes (prompts.mjs askSheetRoll, the module's
+   * setting).
+   */
   abilityRollPrompt: true,
   /** Damage is never rolled after attacks by itself (see rollDamageAfterAttacks): the notice offers it. */
   autoDamage: false,
-  /** "speed" (fast / slow turns) in the default mode; the optional modes roll. */
+  /**
+   * "speed" (fast / slow turns) in the default mode; the optional modes roll.
+   * @returns {"speed"|"roll"}
+   */
   get initiative() { return (setting("optionalRuleInitiativeMode") ?? "s") === "s" ? "speed" : "roll"; }
 };
 
@@ -58,12 +64,21 @@ export const SHEET_TABS = ["actions", "spells", "abilities", "inventory", "statu
 /** The "Next roll" choice: up to three banes or boons. "normal" is none, as in dnd5e. */
 export const ROLL_MODES = ["bane3", "bane2", "bane1", "normal", "boon1", "boon2", "boon3"];
 
-/** Boons (positive) or banes (negative) of a roll mode. */
+/**
+ * Boons (positive) or banes (negative) of a roll mode.
+ * @param {string} mode
+ * @returns {number}
+ */
 export const boonsOf = mode => {
   const m = /^(boon|bane)(\d)$/.exec(mode ?? "");
   return m ? (m[1] === "boon" ? 1 : -1) * Number(m[2]) : 0;
 };
 
+/**
+ * The Next roll choice's label: "No boons", "1 boon", "2 banes"...
+ * @param {string} mode
+ * @returns {string}
+ */
 export function rollModeLabel(mode) {
   const n = boonsOf(mode);
   if ( !n ) return loc("AVTTC.Boons.none");
@@ -71,18 +86,29 @@ export function rollModeLabel(mode) {
   return game.i18n.format(key, { n: Math.abs(n) });
 }
 
-/** The Next roll choice's heading and the names of its two ends (banes on the left, boons on the right). */
+/**
+ * The Next roll choice's heading and the names of its two ends (banes on the left, boons on the right).
+ * @returns {{title: string, low: string, high: string}}
+ */
 export const rollModeScale = () => ({
   title: loc("AVTTC.Boons.title"), low: loc("AVTTC.Boons.banesEnd"), high: loc("AVTTC.Boons.boonsEnd")
 });
 
-/** "+2" for two boons, "−1" for one bane. */
+/**
+ * "+2" for two boons, "−1" for one bane.
+ * @param {string} mode
+ * @returns {string}
+ */
 export const rollModeShort = mode => {
   const n = boonsOf(mode);
   return n ? (n > 0 ? `+${n}` : `−${-n}`) : "0";
 };
 
-/** The dice pool's single d20 with boons or banes (d6, highest kept), or null. */
+/**
+ * The dice pool's single d20 with boons or banes (d6, highest kept), or null.
+ * @param {string} mode
+ * @returns {string|null}
+ */
 export const poolD20 = mode => {
   const n = boonsOf(mode);
   return n ? `1d20 ${n > 0 ? "+" : "-"} ${Math.abs(n)}d6kh` : null;
@@ -112,12 +138,17 @@ const QUICK_STATUSES = ["defend", "concentrate", "prone", "help", "prepare"];
 
 const PATH_ORDER = ["novice", "expert", "master", "legendary"];
 
-/** Health as the sheet shows it: what is left of the maximum (the system stores damage taken). */
+/**
+ * Health as the sheet shows it: what is left of the maximum (the system stores damage taken).
+ * @param {Actor} actor
+ * @returns {{value: number, max: number, temp: number, pct: number}}
+ */
 function health(actor) {
   const h = actor.system.characteristics?.health ?? {};
   const max = int(h.max);
   const damage = int(h.value);
-  return { value: Math.max(max - damage, 0), max, temp: 0, pct: max ? Math.clamp(((max - damage) / max) * 100, 0, 100) : 0 };
+  const pct = max ? Math.clamp(((max - damage) / max) * 100, 0, 100) : 0;
+  return { value: Math.max(max - damage, 0), max, temp: 0, pct };
 }
 
 const statusChoices = (actor, ids) => {
@@ -127,6 +158,11 @@ const statusChoices = (actor, ids) => {
   }));
 };
 
+/**
+ * The pill's summary of a character: name, level, health, stats and afflictions.
+ * @param {Actor} actor
+ * @returns {object}
+ */
 export function getSummary(actor) {
   const sys = actor.system;
   const c = sys.characteristics ?? {};
@@ -159,7 +195,12 @@ export function getSummary(actor) {
   };
 }
 
-/** The five attributes, each rolled as a challenge (the Abilities tab). */
+/**
+ * The five attributes, each rolled as a challenge (the Abilities tab).
+ * @param {Actor} actor
+ * @returns {{key: string, abbr: string, value: number, mod: string, save: null, proficient: boolean,
+ *   checkLabel: string}[]}
+ */
 export function getAbilities(actor) {
   return ATTRIBUTES.map(key => {
     const a = actor.system.attributes?.[key] ?? {};
@@ -181,6 +222,9 @@ export const getSkills = () => [];
  * The Bio tab (read-only): ancestry, paths, professions, languages and religion, the appearance fields the system's
  * sheet shows, and the description, where the character builder writes the background tables and the interesting
  * thing. The description is enriched by the core's enrichSheet.
+ * @param {Actor} actor
+ * @returns {{facts: object[], appearance: object[], appearanceLabel: string, descriptionLabel: string,
+ *   description: string}}
  */
 export function getBio(actor) {
   const names = type => actor.items.filter(i => i.type === type).map(i => i.name).join(", ");
@@ -207,7 +251,11 @@ export function getBio(actor) {
 /*  Uses                                        */
 /* -------------------------------------------- */
 
-/** Castings (spells) or uses (talents) as { left, max }, or null without a limit. The system stores what is used. */
+/**
+ * Castings (spells) or uses (talents) as { left, max }, or null without a limit. The system stores what is used.
+ * @param {Item} item
+ * @returns {{left: number, max: number, path: string}|null}
+ */
 function usesOf(item) {
   const field = (item.type === "spell") ? item.system.castings : (item.type === "talent") ? item.system.uses : null;
   const max = int(field?.max);
@@ -223,7 +271,11 @@ const entry = item => {
   };
 };
 
-/** Groups of usable items: weapons in hand, talents, spells, and usable gear (consumables, items with an action). */
+/**
+ * Groups of usable items: weapons in hand, talents, spells, and usable gear (consumables, items with an action).
+ * @param {Actor} actor
+ * @returns {{label: string, items: object[]}[]}
+ */
 export function getActions(actor) {
   const groups = [];
   const push = (label, items) => {
@@ -236,7 +288,11 @@ export function getActions(actor) {
   return groups;
 }
 
-/** Spells by tradition and rank, with castings left. Every spell an actor has is known (no preparation). */
+/**
+ * Spells by tradition and rank, with castings left. Every spell an actor has is known (no preparation).
+ * @param {Actor} actor
+ * @returns {{label: string, slots: null, items: object[]}[]}
+ */
 export function getSpells(actor) {
   const spells = actor.items.filter(i => i.type === "spell");
   const groups = new Map();
@@ -260,7 +316,13 @@ export function getSpells(actor) {
 
 export const togglePrepared = () => null;
 
-/** Change what is left of a spell's castings or a talent's uses by one (to undo an accidental use). */
+/**
+ * Change what is left of a spell's castings or a talent's uses by one (to undo an accidental use).
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @param {number} delta
+ * @returns {Promise<Item>|undefined}
+ */
 export function changeUses(actor, itemId, delta) {
   const item = actor.items.get(itemId);
   const uses = item && usesOf(item);
@@ -278,7 +340,11 @@ export const changeSlots = () => null;
 /** At most this many favorites on the pill's row, as in dnd5e. */
 const FAVORITES_MAX = 8;
 
-/** Favorite item ids, in the order they were starred (actor flag; the system has no favorites). */
+/**
+ * Favorite item ids, in the order they were starred (actor flag; the system has no favorites).
+ * @param {Actor|null} actor
+ * @returns {string[]}
+ */
 const favoriteIds = actor => {
   const ids = actor?.getFlag?.(CORE_ID, "favorites");
   return Array.isArray(ids) ? ids.filter(id => typeof id === "string") : [];
@@ -288,8 +354,10 @@ export const canFavorite = actor => !!actor?.isOwner && (actor.type === "charact
 
 /**
  * Does using this item do something? Weapons, talents and spells always; other gear when it attacks, deals damage,
- * heals, has an extra effect, is a consumable or carries effects it applies when used. Only these can be favorites (the pill's
- * one-tap uses): a candle or a backpack would only post its card.
+ * heals, has an extra effect, is a consumable or carries effects it applies when used. Only these can be
+ * favorites (the pill's one-tap uses): a candle or a backpack would only post its card.
+ * @param {Item|undefined} item
+ * @returns {boolean}
  */
 export function itemActs(item) {
   if ( !item ) return false;
@@ -302,6 +370,12 @@ export function itemActs(item) {
 
 export const isFavorite = (actor, item) => !!item && favoriteIds(actor).includes(item.id);
 
+/**
+ * Star or unstar an item; only items that do something when used can be starred.
+ * @param {Actor|null} actor
+ * @param {string} itemId
+ * @returns {Promise<Actor>|undefined}
+ */
 export function toggleFavorite(actor, itemId) {
   if ( !canFavorite(actor) || !actor.items.has(itemId) ) return;
   // Ids of items that no longer exist are dropped as the list changes.
@@ -312,7 +386,11 @@ export function toggleFavorite(actor, itemId) {
   return actor.setFlag(CORE_ID, "favorites", next);
 }
 
-/** @returns {{id: string, name: string, img: string}[]} */
+/**
+ * The actor's favorite items in the order they were starred (the table pill's favorites row), at most FAVORITES_MAX.
+ * @param {Actor} actor
+ * @returns {{id: string, name: string, img: string}[]}
+ */
 export const getFavoriteActions = actor => favoriteIds(actor)
   .map(id => actor.items.get(id)).filter(itemActs).slice(0, FAVORITES_MAX)
   .map(({ id, name, img }) => ({ id, name, img }));
@@ -324,16 +402,24 @@ export const getFavoriteActions = actor => favoriteIds(actor)
 /**
  * Afflictions that make an action of this kind fail (e.g. a stunned creature can't act), as the system's own roll
  * paths check before their dialog; shown as the system's warning.
+ * @param {Actor} actor
+ * @param {string} kind
+ * @param {string|undefined} attribute
+ * @returns {boolean}
  */
 function blocked(actor, kind, attribute) {
   const attr = String(attribute ?? "").toLowerCase();
   if ( !(actor.system.maluses?.autoFail?.[kind]?.[attr] > 0) ) return false;
-  const msg = [...actor.allApplicableEffects()].find(e => e.flags?.demonlord?.warningMessage)?.flags.demonlord.warningMessage;
+  const warned = [...actor.allApplicableEffects()].find(e => e.flags?.demonlord?.warningMessage);
+  const msg = warned?.flags.demonlord.warningMessage;
   ui.notifications.error(msg ?? loc(`DL.AutoFail${kind.capitalize()}s`));
   return true;
 }
 
-/** The system's "target on select" setting: selecting a token targets it. */
+/**
+ * The system's "target on select" setting: selecting a token targets it.
+ * @returns {boolean}
+ */
 export const targetOnSelect = () => !!setting("targetingOnSelect");
 
 /** Chat card buttons that act on the user's targets (the system's chat listeners read them); see the phone's app. */
@@ -343,6 +429,7 @@ export const CARD_TARGET_BUTTONS = ".roll-damage, .apply-damage, .roll-healing, 
  * The tokens an attack is aimed at, as the system reads them (selected tokens with its "target on select").
  * Without a map (the phone), the targets picked in the use dialog are passed instead: token documents, which have
  * the `actor` the system's attack reads from its target.
+ * @returns {Array<Token|TokenDocument>}
  */
 const targetTokens = () => (targetOnSelect() ? (canvas?.tokens?.controlled ?? []) : [...game.user.targets]);
 
@@ -350,6 +437,8 @@ const targetTokens = () => (targetOnSelect() ? (canvas?.tokens?.controlled ?? []
  * Does using this item ask for targets? (The phone's use dialog; the table uses the map's targets.) Weapons and
  * attack spells: the system's attack takes the target we pass. Talents and gear that attack read the user's targets
  * themselves, which the phone fills from the picked ones (its no-map token layer, see the phone's targets.mjs).
+ * @param {Item|undefined} item
+ * @returns {boolean}
  */
 export function itemNeedsTargets(item) {
   const action = item?.system.action;
@@ -360,7 +449,11 @@ export function itemNeedsTargets(item) {
 
 /**
  * A challenge roll with an attribute (the Abilities tab, a GM's request), with the Next roll's boons or banes.
+ * @param {Actor} actor
+ * @param {string} key
+ * @param {string} mode
  * @param {number} [extra]  Boons (or banes) the request itself gives.
+ * @returns {Promise<unknown>|null}
  */
 export function rollAbility(actor, key, mode, extra = 0) {
   const attribute = actor.getAttribute?.(key);
@@ -382,6 +475,7 @@ export const rollDeathSave = () => null;
  * @param {object} [options]
  * @param {TokenDocument[]} [options.targets]  Targets picked without the map (the phone); otherwise the user's.
  * @param {number} [options.modifier]          A flat modifier for the roll.
+ * @returns {Promise<unknown>}
  */
 export async function useItem(actor, itemId, mode = "normal", { targets, modifier = 0 } = {}) {
   const item = actor?.items.get(itemId);
@@ -396,6 +490,16 @@ export async function useItem(actor, itemId, mode = "normal", { targets, modifie
   }
 }
 
+/**
+ * Attack with a weapon, once per target, then spend its ammunition.
+ * @param {Actor} actor
+ * @param {Item} item
+ * @param {object} root0
+ * @param {number} root0.boons
+ * @param {number} root0.modifier
+ * @param {Array<Token|TokenDocument>} root0.targets
+ * @returns {Promise<void>}
+ */
 async function attackWith(actor, item, { boons, modifier, targets }) {
   if ( blocked(actor, "action", item.system.action?.attack) ) return;
   const consume = item.system.consume ?? {};
@@ -410,6 +514,16 @@ async function attackWith(actor, item, { boons, modifier, targets }) {
   if ( ammo ) await ammo.update({ "system.quantity": Math.max(ammo.system.quantity - (int(consume.amount) || 1), 0) });
 }
 
+/**
+ * Cast a spell, spending a casting.
+ * @param {Actor} actor
+ * @param {Item} item
+ * @param {object} root0
+ * @param {number} root0.boons
+ * @param {number} root0.modifier
+ * @param {Array<Token|TokenDocument>} root0.targets
+ * @returns {Promise<void>}
+ */
 async function castSpell(actor, item, { boons, modifier, targets }) {
   const attack = item.system.action?.attack;
   const attacks = (item.system.spelltype === "Attack") && attack;
@@ -419,10 +533,21 @@ async function castSpell(actor, item, { boons, modifier, targets }) {
   const max = int(item.system.castings?.max);
   if ( max && (used >= max) ) return ui.notifications.warn(loc("DL.SpellMaxUsesReached"));
   await item.update({ "system.castings.value": String(used + 1) });
-  if ( attacks && targets.length ) for ( const target of targets ) await actor.useSpell(item, boons, modifier, [target]);
+  if ( attacks && targets.length ) {
+    for ( const target of targets ) await actor.useSpell(item, boons, modifier, [target]);
+  }
   else await actor.useSpell(item, attacks ? boons : 0, attacks ? modifier : 0);
 }
 
+/**
+ * Use a talent, spending a use.
+ * @param {Actor} actor
+ * @param {Item} item
+ * @param {object} root0
+ * @param {number} root0.boons
+ * @param {number} root0.modifier
+ * @returns {Promise<unknown>}
+ */
 async function useTalent(actor, item, { boons, modifier }) {
   if ( blocked(actor, "challenge", "strength") ) return;
   const used = int(item.system.uses?.value);
@@ -432,6 +557,15 @@ async function useTalent(actor, item, { boons, modifier }) {
   return actor.useTalent(item, attacks ? boons : 0, attacks ? modifier : 0);
 }
 
+/**
+ * Use gear, spending one of a consumable.
+ * @param {Actor} actor
+ * @param {Item} item
+ * @param {object} root0
+ * @param {number} root0.boons
+ * @param {number} root0.modifier
+ * @returns {Promise<unknown>}
+ */
 async function useGear(actor, item, { boons, modifier }) {
   // Incantations cast the spell they hold: the system's own path, with its dialog.
   if ( (item.system.consumabletype === "I") && (item.system.contents?.length === 1) ) return actor.rollItem(item.id);
@@ -453,7 +587,10 @@ async function useGear(actor, item, { boons, modifier }) {
 /*  Levelling up                                */
 /* -------------------------------------------- */
 
-/** SotDL levels are given by the GM; the sheet's own controls are used. */
+/**
+ * SotDL levels are given by the GM; the sheet's own controls are used.
+ * @returns {{canLevel: boolean, ready: boolean}}
+ */
 export const levelInfo = () => ({ canLevel: false, ready: false });
 export const openLevelUp = actor => actor?.sheet?.render({ force: true });
 
@@ -464,15 +601,32 @@ export const openLevelUp = actor => actor?.sheet?.render({ force: true });
 /** HP field modes: damage taken or healed (SotDL has no temporary health). */
 export const HP_MODES = ["damage", "heal"];
 
+/**
+ * Apply an HP field entry: damage taken, or healed (a negative increase of damage).
+ * @param {Actor|null} actor
+ * @param {"damage"|"heal"} mode
+ * @param {number} amount
+ * @returns {Promise<unknown>|undefined}
+ */
 export function applyHpChange(actor, mode, amount) {
   if ( !actor || !amount ) return;
   return actor.increaseDamage((mode === "damage") ? amount : -amount);
 }
 
-/** Fortune: the character has it or not (the quick actions' "inspiration" button). */
+/**
+ * Fortune: the character has it or not (the quick actions' "inspiration" button).
+ * @param {Actor} actor
+ * @returns {Promise<Actor>}
+ */
 export const toggleInspiration = actor =>
   actor.update({ "system.characteristics.fortune": int(actor.system.characteristics?.fortune) > 0 ? 0 : 1 });
 
+/**
+ * Switch a status on or off, decided from what the player saw.
+ * @param {Actor} actor
+ * @param {string} id
+ * @returns {Promise<void>|undefined}
+ */
 export function toggleCondition(actor, id) {
   if ( !CONFIG.statusEffects.some(e => e.id === id) ) return;
   const active = !actor.statuses.has(id);
@@ -481,7 +635,9 @@ export function toggleCondition(actor, id) {
     if ( active ) await raceTolerant(() => actor.toggleStatusEffect(id, { active }));
     // Off: every effect of the actor with the status, as the system's own findDeleteEffect. Core's toggle only finds
     // the status's static _id, and the system adds some with random ids (Unconscious when Dying, see fixStatusIds).
-    else for ( const effect of actor.effects.filter(e => e.statuses.has(id)) ) await raceTolerant(() => effect.delete());
+    else {
+      for ( const effect of actor.effects.filter(e => e.statuses.has(id)) ) await raceTolerant(() => effect.delete());
+    }
     await waitFor(() => actor.statuses.has(id) === active, 2000);
   });
 }
@@ -489,7 +645,13 @@ export function toggleCondition(actor, id) {
 export const shortRest = actor => actor.restActor(8, true, true, true);
 export const longRest = actor => actor.restActor(24, true, true, true);
 
-/** Insanity and corruption, changed with − / + in quick actions. */
+/**
+ * Insanity and corruption, changed with − / + in quick actions.
+ * @param {Actor} actor
+ * @param {Set<string>} toggled
+ * @returns {{exhaustion: null, concentration: object[], tracks: object[], quickConditions: object[],
+ *   effects: object[]}}
+ */
 export function getQuickActions(actor, toggled = new Set()) {
   const c = actor.system.characteristics ?? {};
   return {
@@ -504,6 +666,13 @@ export function getQuickActions(actor, toggled = new Set()) {
   };
 }
 
+/**
+ * Change insanity or corruption by one.
+ * @param {Actor} actor
+ * @param {"insanity"|"corruption"} key
+ * @param {number} delta
+ * @returns {Promise<unknown>|undefined}
+ */
 export function changeTrack(actor, key, delta) {
   const step = Math.sign(Number(delta));
   if ( !step ) return;
@@ -521,7 +690,11 @@ export const changeExhaustion = () => null;
 export const initiativeDue = (actor, combat = game.combat) =>
   combat?.combatants.filter(c => (c.actorId === actor?.id) && (c.initiative === null) && !c.isDefeated) ?? [];
 
-/** Fast or slow turn (default initiative mode), and whether the character may take a fast turn. */
+/**
+ * Fast or slow turn (default initiative mode), and whether the character may take a fast turn.
+ * @param {Actor|null} actor
+ * @returns {{fast: boolean, canBeFast: boolean}|null}
+ */
 export function turnSpeed(actor) {
   if ( !actor || (FEATURES.initiative !== "speed") ) return null;
   return { fast: !!actor.system.fastturn, canBeFast: !actor.system.maluses?.noFastTurn };
@@ -530,6 +703,8 @@ export function turnSpeed(actor) {
 /**
  * Choose a fast or slow turn. The system re-sets the initiative of the actor's combatants when its turn speed
  * changes; combatants still without one get it here, as its own fast / slow dialog would.
+ * @param {Actor|null} actor
+ * @param {boolean} fast
  */
 export async function setTurnSpeed(actor, fast) {
   if ( !actor?.isOwner ) return;
@@ -541,7 +716,11 @@ export async function setTurnSpeed(actor, fast) {
   }
 }
 
-/** Initiative without a dialog: the current turn speed (default mode), or the system's roll (optional modes). */
+/**
+ * Initiative without a dialog: the current turn speed (default mode), or the system's roll (optional modes).
+ * @param {Actor} actor
+ * @returns {Promise<unknown>|null}
+ */
 export function rollInitiative(actor) {
   const due = initiativeDue(actor);
   if ( !due.length ) return null;
@@ -557,12 +736,21 @@ export const INVENTORY_TYPES = ["weapon", "armor", "ammo", "item", "relic"];
 
 const COINS = ["gc", "ss", "cp", "bits"];
 
-/** The actor's coins, one entry per kind (the inventory and the shared inventory). The system stores strings. */
+/**
+ * The actor's coins, one entry per kind (the inventory and the shared inventory). The system stores strings.
+ * @param {Actor|null} actor
+ * @returns {{key: string, label: string, abbr: string, icon: null, value: number}[]}
+ */
 export const getCurrency = actor => COINS.map(key => ({
   key, label: loc(`AVTTC.DL.Coin.${key}`), abbr: loc(`AVTTC.DL.CoinShort.${key}`), icon: null,
   value: int(actor?.system.wealth?.[key])
 }));
 
+/**
+ * Coins and carried items grouped by type (no encumbrance, attunement or containers in SotDL).
+ * @param {Actor} actor
+ * @returns {{currency: object[], encumbrance: null, attunement: null, groups: object[]}}
+ */
 export function getInventory(actor) {
   const carried = actor.items.filter(i => INVENTORY_TYPES.includes(i.type));
   const groups = INVENTORY_TYPES.map(type => ({
@@ -592,6 +780,12 @@ export function getInventory(actor) {
   };
 }
 
+/**
+ * An item's description, enriched as the player may see it.
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @returns {Promise<string>}
+ */
 export async function getItemDescription(actor, itemId) {
   const item = actor.items.get(itemId);
   if ( !item ) return "";
@@ -600,11 +794,24 @@ export async function getItemDescription(actor, itemId) {
   });
 }
 
+/**
+ * Set how many coins of one kind the actor has (kept from 0 to MAX_CURRENCY).
+ * @param {Actor} actor
+ * @param {string} key
+ * @param {number|string} value
+ * @returns {Promise<Actor>|undefined}
+ */
 export function setCurrency(actor, key, value) {
   if ( !COINS.includes(key) ) return;
   return actor.update({ [`system.wealth.${key}`]: Math.clamp(Math.floor(Number(value) || 0), 0, MAX_CURRENCY) });
 }
 
+/**
+ * Wear or take off an item that can be worn.
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @returns {Promise<Item>|undefined}
+ */
 export function toggleEquipped(actor, itemId) {
   const item = actor.items.get(itemId);
   if ( item && ("wear" in item.system) ) return item.update({ "system.wear": !item.system.wear });
@@ -619,6 +826,10 @@ export const toggleAttuned = () => null;
 /**
  * Move coins of one kind from one actor to another (a character and the party), at most what the giver has.
  * The giver is updated first, so a failed second update never creates coins. The system stores coins as strings.
+ * @param {Actor|null} from
+ * @param {Actor|null} to
+ * @param {string} key
+ * @param {number|string} amount
  * @returns {Promise<number>}  How many coins were moved.
  */
 export async function moveCurrency(from, to, key, amount) {
@@ -631,7 +842,13 @@ export async function moveCurrency(from, to, key, amount) {
   return n;
 }
 
-/** A carried item with this name and type, to add quantities to. */
+/**
+ * A carried item with this name and type, to add quantities to.
+ * @param {Actor} actor
+ * @param {string} name
+ * @param {string} type
+ * @returns {Item|undefined}
+ */
 function stackFor(actor, name, type) {
   const lower = name.toLowerCase();
   return actor.items.find(i => (i.type === type) && (i.name.toLowerCase() === lower) && ("quantity" in i.system));
@@ -640,7 +857,13 @@ function stackFor(actor, name, type) {
 const addToStack = (stack, quantity) =>
   stack.update({ "system.quantity": Math.min(int(stack.system.quantity) + quantity, MAX_QUANTITY) });
 
-/** Add an item typed by name, as plain gear: more of a gear item with that name, or a new one. */
+/**
+ * Add an item typed by name, as plain gear: more of a gear item with that name, or a new one.
+ * @param {Actor|null} actor
+ * @param {string} name
+ * @param {number|string} quantity
+ * @returns {Promise<Item|undefined>|null}
+ */
 export function addNamedItem(actor, name, quantity) {
   name = String(name ?? "").trim().slice(0, 80);
   if ( !actor?.isOwner || !name ) return null;
@@ -672,7 +895,13 @@ export async function copyItems(items, target) {
   }
 }
 
-/** Move a whole stack from one actor to another. */
+/**
+ * Move a whole stack from one actor to another.
+ * @param {Actor|null} from
+ * @param {Actor|null} to
+ * @param {string} itemId
+ * @returns {Promise<Item|undefined>}
+ */
 export async function moveItem(from, to, itemId) {
   const item = from?.items.get(itemId);
   if ( !item || !INVENTORY_TYPES.includes(item.type) || !from.isOwner || !to?.isOwner || (from === to) ) return;
@@ -698,7 +927,10 @@ export function rollDamageAfterAttacks(applies) {}
 export const rollConcentration = () => null;
 export const rollActivitySave = () => null;
 export const answerRequest = () => null;
-/** dnd5e activities only; SotDL items use itemNeedsTargets. */
+/**
+ * For dnd5e activities only; SotDL items use itemNeedsTargets.
+ * @returns {boolean}
+ */
 export const needsTargets = () => false;
 export const usageProblem = () => null;
 
@@ -709,7 +941,11 @@ export const usageProblem = () => null;
 /** Item types whose use posts a card (spell.hbs, talent.hbs, useitem.hbs, combat.hbs). */
 const USE_TYPES = ["spell", "talent", "item", "weapon"];
 
-/** The actor and item of a system card, as the system finds them (_getChatCardActor): token first, then actor id. */
+/**
+ * The actor and item of a system card, as the system finds them (_getChatCardActor): token first, then actor id.
+ * @param {HTMLElement} card
+ * @returns {{actor?: Actor, item?: Item}}
+ */
 function cardSubject(card) {
   const el = card.querySelector(".demonlord[data-item-id]");
   if ( !el ) return {};
@@ -725,6 +961,13 @@ function cardSubject(card) {
 let damageGroup = null;
 const DAMAGE_GROUP_MS = 20000;
 
+/**
+ * The total so far of the damage group this message belongs to, if it belongs to the open one.
+ * @param {ChatMessage} message
+ * @param {number} total
+ * @param {HTMLElement} card
+ * @returns {{total: number, breakdown: string}}
+ */
 function groupDamage(message, total, card) {
   const g = damageGroup;
   const open = g && (Date.now() < g.until) && (g.actor === cardSubject(card).actor);
@@ -746,7 +989,9 @@ export async function rollDamageFrom(message) {
   const html = await message.renderHTML();
   const buttons = [...html.querySelectorAll(".roll-damage")];
   if ( !buttons.length ) return;
-  damageGroup = { actor: cardSubject(html).actor, expected: buttons.length, totals: new Map(), until: Date.now() + DAMAGE_GROUP_MS };
+  damageGroup = {
+    actor: cardSubject(html).actor, expected: buttons.length, totals: new Map(), until: Date.now() + DAMAGE_GROUP_MS
+  };
   for ( const button of buttons ) button.click();
 }
 
@@ -756,6 +1001,8 @@ export async function rollDamageFrom(message) {
  * FAILURE (an attack card has one target; no mark when there is no target or it is immune). A spell cast without an
  * attack roll has no roll: it gets a notice with its name (`kind: "use"`), as do talents and items used without a
  * roll that have damage to roll. `damage` is true when the card has damage buttons and didn't miss.
+ * @param {ChatMessage} message
+ * @returns {object|null}
  */
 export function summarizeRoll(message) {
   const roll = message.rolls?.[0];

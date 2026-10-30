@@ -39,6 +39,10 @@ export function activateShareListeners(onChange) {
   });
 }
 
+/**
+ * Put a shared entry or image first in the recent list (moved up if it was there), keeping at most MAX_SHARED.
+ * @param {object} item
+ */
 function remember(item) {
   const key = item.uuid ?? item.image;
   const existing = shared.findIndex(s => (s.uuid ?? s.image) === key);
@@ -52,7 +56,11 @@ export const getSharedItem = index => shared[Number(index)] ?? null;
 
 export const cleanQuery = query => String(query ?? "").slice(0, MAX_QUERY);
 
-/** Entries the user may observe, filtered by name and sorted by folder then name. */
+/**
+ * Entries the user may observe, filtered by name and sorted by folder then name.
+ * @param {string} query
+ * @returns {{uuid: string, name: string, folder: string}[]}
+ */
 export function getEntries(query = "") {
   const q = cleanQuery(query).trim().toLowerCase();
   return game.journal
@@ -61,7 +69,12 @@ export function getEntries(query = "") {
     .sort((a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name));
 }
 
-/** An entry with its observable pages; the first page (or the requested one) is rendered. */
+/**
+ * An entry with its observable pages; the first page (or the requested one) is rendered.
+ * @param {string} uuid
+ * @param {string|null} pageId
+ * @returns {Promise<{uuid: string, name: string, pages: object[], page: object|null}|null>}
+ */
 export async function getEntry(uuid, pageId = null) {
   const entry = await fromUuid(uuid).catch(() => null);
   if ( !(entry instanceof foundry.documents.JournalEntry) || !entry.visible ) return null;
@@ -77,7 +90,11 @@ export async function getEntry(uuid, pageId = null) {
   };
 }
 
-/** Page content: enriched text, an image, or a button to open other page types in the full journal. */
+/**
+ * Page content: enriched text, an image, or a button to open other page types in the full journal.
+ * @param {JournalEntryPage} page
+ * @returns {Promise<object>}
+ */
 async function renderPage(page) {
   const base = { id: page.id, name: page.name };
   switch ( page.type ) {
@@ -90,7 +107,12 @@ async function renderPage(page) {
   }
 }
 
-/** Open an entry in its full sheet, e.g. for PDF or video pages. */
+/**
+ * Open an entry in its full sheet, e.g. for PDF or video pages.
+ * @param {string} uuid
+ * @param {string} pageId
+ * @returns {Promise<ApplicationV2|undefined>}
+ */
 export async function openFullEntry(uuid, pageId) {
   const entry = await fromUuid(uuid).catch(() => null);
   if ( entry instanceof foundry.documents.JournalEntry ) return entry.sheet.render({ force: true, pageId });

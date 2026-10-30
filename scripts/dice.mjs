@@ -9,7 +9,10 @@ import sys from "./system.mjs";
 const TABLE_MODULE_ID = "awesome-vtt";
 export const PHYSICAL_DICE_METHOD = "awesome-vtt";
 
-/** Is the Physical dice method registered on this device (the table module is active)? */
+/**
+ * Is the Physical dice method registered on this device (the table module is active)?
+ * @returns {boolean}
+ */
 export const physicalDiceRegistered = () =>
   !!game.modules.get(TABLE_MODULE_ID)?.active && !!CONFIG.Dice.fulfillment.methods[PHYSICAL_DICE_METHOD];
 
@@ -37,6 +40,7 @@ const MAX_MOD = 30;
 /**
  * The "Next roll" modes of this system (the dice pool's single d20, sheet rolls and prompts): dnd5e's advantage and
  * disadvantage, or SotDL's boons and banes. "normal" is always the neutral one.
+ * @returns {string[]}
  */
 export const advModes = () => sys.ROLL_MODES;
 
@@ -45,6 +49,7 @@ export const advModes = () => sys.ROLL_MODES;
  * adapter's for others).
  * @param {Record<string, string>} labels  The module's label key per dnd5e mode.
  * @param {string} active
+ * @returns {{id: string, label: string, text: string, tone: string, active: boolean}[]}
  */
 export const advModeChoices = (labels, active) => advModes().map(id => {
   const label = sys.rollModeLabel(id) ?? game.i18n.localize(labels[id]);
@@ -52,13 +57,25 @@ export const advModeChoices = (labels, active) => advModes().map(id => {
   return { id, label, text: sys.rollModeShort(id) ?? label, tone: advModeTone(id), active: id === active };
 });
 
-/** The Next roll choice's heading and end labels ({title, low, high}, SotDL: banes … boons), or null (dnd5e). */
+/**
+ * The Next roll choice's heading and end labels ({title, low, high}, SotDL: banes … boons), or null (dnd5e).
+ * @returns {{title: string, low: string, high: string}|null}
+ */
 export const advModeScale = () => sys.rollModeScale();
 
-/** The colour of a mode: "adv" (advantage, boons), "dis" (disadvantage, banes) or "normal". */
+/**
+ * The colour of a mode: "adv" (advantage, boons), "dis" (disadvantage, banes) or "normal".
+ * @param {string} id
+ * @returns {string}
+ */
 export const advModeTone = id => (id.startsWith("boon") ? "adv" : id.startsWith("bane") ? "dis" : id);
 
-/** The short text of the pill's chip for an armed mode ("ADV", "+2"…): the adapter's, else the module's label. */
+/**
+ * The short text of the pill's chip for an armed mode ("ADV", "+2"…): the adapter's, else the module's label.
+ * @param {Record<string, string>} shortLabels
+ * @param {string} mode
+ * @returns {string}
+ */
 export const advModeShort = (shortLabels, mode) => sys.rollModeShort(mode) ?? game.i18n.localize(shortLabels[mode]);
 
 /**
@@ -67,6 +84,7 @@ export const advModeShort = (shortLabels, mode) => sys.rollModeShort(mode) ?? ga
  */
 class DicePool {
   pool = {};
+
   mod = 0;
 
   add(die) {
@@ -79,7 +97,10 @@ class DicePool {
     if ( !this.pool[die] ) delete this.pool[die];
   }
 
-  /** Change the modifier by a whole number (e.g. ±1). */
+  /**
+   * Change the modifier by a whole number (e.g. ±1).
+   * @param {number|string} delta
+   */
   changeMod(delta) {
     const step = Math.trunc(Number(delta)) || 0;
     this.mod = Math.clamp(this.mod + step, -MAX_MOD, MAX_MOD);
@@ -90,12 +111,19 @@ class DicePool {
     this.mod = 0;
   }
 
-  /** Each die with its count, for the dice grid. */
+  /**
+   * Each die with its count, for the dice grid.
+   * @returns {{die: string, count: number}[]}
+   */
   get dice() {
     return DICE.map(die => ({ die, count: this.pool[die] ?? 0 }));
   }
 
-  /** Template data for the dice panel: the dice grid, modifier and formula. */
+  /**
+   * Template data for the dice panel: the dice grid, modifier and formula.
+   * @param {string} mode
+   * @returns {{dice: object[], mod: number, formula: string}}
+   */
   context(mode = "normal") {
     return { dice: this.dice, mod: this.mod, formula: this.formula(mode) };
   }
@@ -104,6 +132,7 @@ class DicePool {
    * The pool as a roll formula; a single d20 takes the Next roll choice as the system rolls it (dnd5e: twice, keep
    * the higher or lower; SotDL: boons or banes as d6).
    * @param {string} [mode]
+   * @returns {string}
    */
   formula(mode = "normal") {
     const parts = [];
@@ -168,10 +197,16 @@ export class DicePanel {
   }
 
   context() {
-    return { ...this.pool.context(this.advMode()), physicalAvailable: this.physicalAvailable(), physical: this.physical };
+    const { physical } = this;
+    return { ...this.pool.context(this.advMode()), physicalAvailable: this.physicalAvailable(), physical };
   }
 
-  /** Run a dice action from a [data-action] button. */
+  /**
+   * Run a dice action from a [data-action] button.
+   * @param {string} action
+   * @param {DOMStringMap} data
+   * @returns {Promise<void>}
+   */
   async handle(action, data) {
     switch ( action ) {
       case "diceAdd": this.pool.add(data.die); break;
