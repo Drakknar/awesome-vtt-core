@@ -1,9 +1,13 @@
 {
-  "foundry:last": "14.369",
+  "foundry:14.370": "done:2026-11-04",
+  "foundry:from:14.370": "14.369",
+  "foundry:last": "14.370",
   "system:demonlord:6.1.12": "done:2026-10-13",
   "system:demonlord:6.1.13": "done:2026-10-29",
+  "system:demonlord:6.1.14": "done:2026-11-04",
   "system:dnd5e:6.0.6": "done:2026-10-11",
   "system:from:demonlord:6.1.12": "6.1.11",
   "system:from:demonlord:6.1.13": "6.1.12",
+  "system:from:demonlord:6.1.14": "6.1.13",
   "system:from:dnd5e:6.0.6": "6.0.5"
 }
