@@ -192,6 +192,21 @@ const statusChoices = (actor, ids) => {
   }));
 };
 
+/** Health states worth telling the table about (the system adds them as afflictions as damage builds up). */
+const HEALTH_STATUSES = ["injured", "incapacitated", "dead"];
+
+/**
+ * How hurt a character is, to notice changes: damage taken, and which of the health states it has.
+ * @param {Actor|null} actor
+ * @returns {{damage: number, statuses: string[]}}
+ */
+export function healthState(actor) {
+  return {
+    damage: int(actor?.system.characteristics?.health?.value),
+    statuses: HEALTH_STATUSES.filter(id => actor?.statuses?.has(id))
+  };
+}
+
 /**
  * The pill's summary of a character: name, level, health, stats and afflictions.
  * @param {Actor} actor

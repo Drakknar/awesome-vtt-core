@@ -125,7 +125,11 @@ export function exclusive(task) {
 /*  Notices                                     */
 /* -------------------------------------------- */
 
-const NOTICE_ICONS = { warning: "fa-triangle-exclamation", damage: "fa-burst", healing: "fa-heart-pulse", roll: "fa-dice-d20" };
+const NOTICE_ICONS = {
+  warning: "fa-triangle-exclamation", damage: "fa-burst", healing: "fa-heart-pulse", roll: "fa-dice-d20",
+  // For everyone at the table: a challenge asked of a character, a character hurt.
+  request: "fa-bell", hurt: "fa-heart-crack"
+};
 
 /**
  * Fill a dismissible notice element: an optional small name line (who it is about), an icon and main line, an
@@ -134,7 +138,7 @@ const NOTICE_ICONS = { warning: "fa-triangle-exclamation", damage: "fa-burst", h
  * @param {HTMLElement} el
  * @param {string} base  Class prefix, e.g. "avtt-notice".
  * @param {object} notice
- * @param {"warning"|"damage"|"healing"|"roll"} notice.kind
+ * @param {"warning"|"damage"|"healing"|"roll"|"request"|"hurt"} notice.kind
  * @param {string} notice.text
  * @param {string} [notice.detail]
  * @param {string} [notice.name]  e.g. the character who rolled.
