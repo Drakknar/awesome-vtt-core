@@ -48,7 +48,7 @@ const unique = list => [...new Set(list.filter(Boolean))];
 
 const CHANNEL = "module.awesome-vtt-core";
 const MAX_KEY = 200;
-/** Challenge cards already handled on this device (message id + actor), so a card is prompted once. */
+/** At most this many challenge keys are kept in initPrompts' `seen` set (the oldest is dropped first). */
 const MAX_SEEN = 500;
 
 /**
@@ -71,6 +71,7 @@ export function initPrompts({ show, close, enabled, isMine, announce, relayed = 
   const offer = prompt => prompt && show(prompt);
 
   // A challenge request, from its card or relayed by the GM: once per card and character.
+  /** Keys of the challenge requests already handled on this device (`challenge:<message id>:<actor uuid>`). */
   const seen = new Set();
   const challenge = data => {
     const prompt = challengePrompt(data, mine);
@@ -138,8 +139,8 @@ export function initPrompts({ show, close, enabled, isMine, announce, relayed = 
  * socket, so their device can prompt as for a public card (initPrompts with `relayed`). Call on every client at
  * "ready"; it does nothing in systems without challenge cards (dnd5e) or on other clients.
  *
- * Socket message: `{ type: "challengeRelay", to: [userId], messageId, actorUuid, attribute, boons, userId }`
- * (attribute: a `CONFIG.DL.attributes` key; boons: the card's own boons, banes negative; userId: who made the card).
+ * Socket message: `{ type: "challengeRelay", to: [userId], messageId, actorUuid, attribute, boons }`
+ * (attribute: a `CONFIG.DL.attributes` key; boons: the card's own boons, banes negative).
  * Module sockets reach every client, so other players can read it: it says which character was asked for which
  * roll, as the card's speaker does.
  * @param {function(Actor): string[]} recipients  Ids of the users to relay a request for this character to (the
@@ -147,9 +148,9 @@ export function initPrompts({ show, close, enabled, isMine, announce, relayed = 
  */
 export function relayChallenges(recipients) {
   const read = BUILDERS[game.system.id]?.readChallenge;
-  if ( !read || !game.socket ) return;
+  if ( !read ) return;
   Hooks.on("createChatMessage", message => {
-    if ( !game.user.isGM || (game.users.activeGM !== game.user) ) return;
+    if ( game.users.activeGM !== game.user ) return;
     const whisper = message.whisper ?? [];
     // Only cards a GM made (the system's challenge button), and only whispered ones: a public card reaches everyone.
     if ( !message.author?.isGM || !whisper.length ) return;
@@ -158,7 +159,7 @@ export function relayChallenges(recipients) {
     if ( !actor ) return;
     const to = recipients(actor).filter(id => !whisper.includes(id) && game.users.get(id)?.active);
     if ( !to.length ) return;
-    game.socket.emit(CHANNEL, { type: "challengeRelay", to, ...data, userId: message.author?.id ?? null });
+    game.socket.emit(CHANNEL, { type: "challengeRelay", to, ...data });
   });
 }
 
@@ -183,18 +184,16 @@ function challengeActor(uuid) {
 /**
  * A relayed challenge request with every field checked, or null.
  * @param {object} data
- * @returns {{to: string[], messageId: string, actorUuid: string, attribute: string, boons: number,
- *   userId: string|null}|null}
+ * @returns {{to: string[], messageId: string, actorUuid: string, attribute: string, boons: number}|null}
  */
 function validRelay(data) {
-  const { to, messageId, actorUuid, attribute, boons, userId } = data;
+  const { to, messageId, actorUuid, attribute, boons } = data;
   if ( !Array.isArray(to) || (to.length > 20) || !to.every(id => (typeof id === "string") && ID.test(id)) ) return null;
   if ( (typeof messageId !== "string") || !ID.test(messageId) ) return null;
   if ( (typeof actorUuid !== "string") || !CHALLENGE_UUID.test(actorUuid) ) return null;
   if ( (typeof attribute !== "string") || !Object.hasOwn(CONFIG.DL?.attributes ?? {}, attribute) ) return null;
   if ( !Number.isInteger(boons) || (Math.abs(boons) > MAX_BOONS) ) return null;
-  if ( (userId !== null) && ((typeof userId !== "string") || !ID.test(userId)) ) return null;
-  return { to, messageId, actorUuid, attribute, boons, userId };
+  return { to, messageId, actorUuid, attribute, boons };
 }
 
 /**
@@ -376,10 +375,10 @@ function readChallengeCard(message) {
  */
 function challengePrompt(data, mine) {
   if ( !data ) return null;
+  // The attribute is a CONFIG.DL.attributes key already (readChallengeCard, validRelay).
+  const { attribute: key, boons: extra } = data;
   const actor = challengeActor(data.actorUuid);
-  const key = data.attribute;
-  if ( !mine(actor) || !CONFIG.DL?.attributes?.[key] ) return null;
-  const extra = data.boons;
+  if ( !mine(actor) ) return null;
   const attribute = loc(CONFIG.DL.attributes[key]);
   const boons = boonsText(extra);
   return {
