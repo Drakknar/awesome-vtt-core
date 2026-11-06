@@ -958,6 +958,12 @@ export const itemNeedsTargets = () => false;
 export const CARD_TARGET_BUTTONS = null;
 
 /**
+ * SotDL's "target on select" setting; dnd5e has none.
+ * @returns {boolean}
+ */
+export const targetOnSelect = () => false;
+
+/**
  * Does this activity act on specific tokens that must be targeted before use? Attacks and saves do, and activities
  * aimed at creatures (ally, enemy, …).
  * @param {Activity} activity
