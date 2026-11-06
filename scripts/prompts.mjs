@@ -414,6 +414,29 @@ function queueLocal(queue, prompt) {
   return true;
 }
 
+/**
+ * Boon sources (the adapter's boonSources) as template rows: boons "+n", banes "−n", and whether each still counts.
+ * Prompts and the phone's use dialog draw these. Null when there are none.
+ * @param {{id: string, label: string, value: number}[]|null} sources
+ * @param {Set<string>} [disabled]  Source ids switched off: shown, but not counted.
+ * @returns {{id: string, label: string, value: string, enabled: boolean}[]|null}
+ */
+export function sourceRows(sources, disabled) {
+  if ( !sources?.length ) return null;
+  return sources.map(({ id, label, value }) => ({
+    id, label, value: (value > 0) ? `+${value}` : `−${-value}`, enabled: !disabled?.has(id)
+  }));
+}
+
+/**
+ * Switch a boon source off, or back on (`disabled` holds the ids switched off).
+ * @param {Set<string>} disabled
+ * @param {string} id
+ */
+export function toggleSourceIn(disabled, id) {
+  if ( !disabled.delete(id) ) disabled.add(id);
+}
+
 /* -------------------------------------------- */
 /*  Both systems                                */
 /* -------------------------------------------- */
@@ -527,13 +550,9 @@ export class PromptQueue {
     const prompt = this.current;
     if ( !prompt ) return null;
     const { key, kind, icon, title, text, tally, rollMode } = prompt;
-    const sources = prompt.sources?.() ?? [];
     return {
       key, kind, icon, title, text, tally,
-      // Boons (+) and banes (−) with where they come from; a switched-off one is shown but not counted.
-      sources: sources.length ? sources.map(({ id, label, value }) => ({
-        id, label, value: (value > 0) ? `+${value}` : `−${-value}`, enabled: !prompt.disabled?.has(id)
-      })) : null,
+      sources: sourceRows(prompt.sources?.(), prompt.disabled),
       choices: prompt.choices.map(({ label, icon }) => ({ label, icon })),
       modes: rollMode ? modes : null,
       scale: rollMode ? sys.rollModeScale() : null,
@@ -583,8 +602,7 @@ export class PromptQueue {
   toggleSource(id) {
     const prompt = this.current;
     if ( !prompt?.sources || !id ) return;
-    prompt.disabled ??= new Set();
-    if ( !prompt.disabled.delete(id) ) prompt.disabled.add(id);
+    toggleSourceIn(prompt.disabled ??= new Set(), id);
     this.onChange();
   }
 
