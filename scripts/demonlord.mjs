@@ -513,20 +513,29 @@ export const rollDeathSave = () => null;
  * @param {number} [options.modifier]          A flat modifier for the roll.
  * @param {string[]} [options.disabled]        Boon sources the player switched off (boonSources ids).
  * @returns {Promise<unknown>}
+ *
+ * When it uses the user's targets (none passed), it calls hooks so a module can look after them (the table's seats
+ * share the table user's): `awesome-vtt-core.preUseItem(actor, item)` before the targets are read, and
+ * `awesome-vtt-core.useItem(actor, item)` afterwards (also when the use failed).
  */
 export async function useItem(actor, itemId, mode = "normal", { targets, modifier = 0, disabled } = {}) {
   const item = actor?.items.get(itemId);
   if ( !item ) return null;
+  if ( !targets ) Hooks.callAll(`${CORE_ID}.preUseItem`, actor, item);
   const roll = {
     boons: boonsOf(mode), modifier: parseInt(modifier) || 0, targets: targets ?? targetTokens(),
     selection: selectionOf(disabled)
   };
-  switch ( item.type ) {
-    case "weapon": return attackWith(actor, item, roll);
-    case "spell": return castSpell(actor, item, roll);
-    case "talent": return useTalent(actor, item, roll);
-    case "item": return useGear(actor, item, roll);
-    default: return actor.rollItem?.(itemId);
+  try {
+    switch ( item.type ) {
+      case "weapon": return await attackWith(actor, item, roll);
+      case "spell": return await castSpell(actor, item, roll);
+      case "talent": return await useTalent(actor, item, roll);
+      case "item": return await useGear(actor, item, roll);
+      default: return await actor.rollItem?.(itemId);
+    }
+  } finally {
+    if ( !targets ) Hooks.callAll(`${CORE_ID}.useItem`, actor, item);
   }
 }
 
