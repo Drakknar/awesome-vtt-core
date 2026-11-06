@@ -7,11 +7,20 @@
 import {
   MAX_QUANTITY, MAX_CURRENCY, byName, signed, getToggleEffects, queueEffects, raceTolerant, waitFor, plainText,
   onRollResult as onRollResultFor,
-  hpAmount, changeQuantity, toggleEffect, rollNotice
+  hpAmount, changeQuantity, toggleEffect, rollNotice, transformHelpers
 } from "./common.mjs";
 
 // System-neutral helpers the shared code reaches through this adapter (see system.mjs).
 export { hpAmount, changeQuantity, toggleEffect, rollNotice };
+
+/** Polymorph and wild shape (dnd5e's transformInto): see common.mjs transformHelpers. */
+export const { isTransformed, originalId, currentForm, revertForm } = transformHelpers("isPolymorphed");
+
+/**
+ * SotDL only (where boons and banes come from); dnd5e's advantage has no such list.
+ * @returns {null}
+ */
+export const boonSources = () => null;
 
 const loc = key => (key ? game.i18n.localize(key) : "");
 
