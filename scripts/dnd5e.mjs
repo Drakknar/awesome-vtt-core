@@ -14,7 +14,7 @@ import {
 export { hpAmount, changeQuantity, toggleEffect, rollNotice };
 
 /** Polymorph and wild shape (dnd5e's transformInto): see common.mjs transformHelpers. */
-export const { isTransformed, originalId, currentForm, revertForm, transformChanged } =
+export const { isTransformed, originalId, currentForm, revertForm, transformChanged, isForm } =
   transformHelpers("isPolymorphed");
 
 /**

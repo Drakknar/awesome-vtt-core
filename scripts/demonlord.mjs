@@ -32,7 +32,7 @@ import {
 export { hpAmount, changeQuantity, rollNotice };
 
 /** Transformed characters (6.1.13 transformInto / revertOriginalForm): see common.mjs transformHelpers. */
-export const { isTransformed, originalId, currentForm, revertForm, transformChanged } =
+export const { isTransformed, originalId, currentForm, revertForm, transformChanged, isForm } =
   transformHelpers("isTransformed");
 
 /**

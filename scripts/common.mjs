@@ -155,7 +155,8 @@ export function toggleEffect(actor, uuid, extra) {
  * @param {string} flag  "isPolymorphed" (dnd5e) or "isTransformed" (demonlord).
  * @returns {{isTransformed: (actor: Actor|null) => boolean, originalId: (actor: Actor|null) => string|undefined,
  *   currentForm: (actor: Actor|null) => Actor|null, revertForm: (actor: Actor|null) => Promise<unknown>|undefined,
- *   transformChanged: (actor: Actor|null, change: object, ids?: Iterable<string>) => boolean}}
+ *   transformChanged: (actor: Actor|null, change: object, ids?: Iterable<string>) => boolean,
+ *   isForm: (actor: Actor|null) => boolean}}
  */
 export function transformHelpers(flag) {
   const read = (actor, key) => foundry.utils.getProperty(actor ?? {}, `flags.${game.system.id}.${key}`);
@@ -163,6 +164,15 @@ export function transformHelpers(flag) {
   const KEYS = [flag, "originalActor"];
   return {
     isTransformed,
+    /*
+     * A transformed form, or one left behind by a player's revert (only a GM can delete it, so the system just removes
+     * `<flag>` and keeps `originalActor`, the id of another actor). Character lists leave both out. Not an actor
+     * whose `originalActor` is itself, nor anything on a system without these flags.
+     */
+    isForm: actor => {
+      const original = read(actor, "originalActor");
+      return isTransformed(actor) || (!!original && (original !== actor?.id));
+    },
     // The character a transformed form came from (its own id otherwise): the id seats and the phone keep.
     originalId: actor => (isTransformed(actor) && read(actor, "originalActor")) || actor?.id,
     // The newest form of a character this user owns, else the character itself.
