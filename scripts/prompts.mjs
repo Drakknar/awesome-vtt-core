@@ -29,7 +29,10 @@ import { parseHTML, messageActor } from "./common.mjs";
  * @property {boolean} rollMode    Offer Normal / Advantage / Disadvantage.
  * @property {boolean} [local]     Started on this device (e.g. an attribute rolled from the sheet): answering or
  *   dismissing it isn't sent to the player's other devices.
- * @property {{label: string, icon?: string, run: function(string): Promise}[]} choices
+ * @property {function(): object[]|null} [sources]  SotDL 6.1.14: where the roll's boons and banes come from (the
+ *   adapter's boonSources), read on each render; the player can switch them off (`disabled`).
+ * @property {Set<string>} [disabled]  Source ids switched off, passed to the choice's `run` as its second argument.
+ * @property {{label: string, icon?: string, run: function(string, string[]): Promise}[]} choices
  */
 
 const loc = key => game.i18n.localize(key);
@@ -267,10 +270,11 @@ function challengePrompts(message, enabled, mine) {
     title: loc("AVTTC.Prompt.Challenge.Title"),
     text: fmt(boons ? "AVTTC.Prompt.Challenge.TextBoons" : "AVTTC.Prompt.Challenge.Text", { name: actor.name, attribute, boons }),
     rollMode: true,
+    sources: () => sys.boonSources(actor, { attribute: key }),
     choices: [{
       label: fmt("AVTTC.Prompt.Challenge.Roll", { attribute }),
       icon: "fa-solid fa-dice-d20",
-      run: mode => sys.rollAbility(actor, key, mode, extra)
+      run: (mode, disabled) => sys.rollAbility(actor, key, mode, extra, disabled)
     }]
   }];
 }
@@ -298,10 +302,42 @@ function attributeRollPrompt(actor, action, data) {
     title: fmt("AVTTC.Prompt.Ability.Title", { attribute }),
     text: fmt("AVTTC.Prompt.Ability.Text", { name: actor.name, attribute }),
     rollMode: true,
+    sources: () => sys.boonSources(actor, { attribute: key }),
     choices: [{
       label: fmt("AVTTC.Prompt.Challenge.Roll", { attribute }),
       icon: "fa-solid fa-dice-d20",
-      run: mode => sys.rollAbility(actor, key, mode)
+      run: (mode, disabled) => sys.rollAbility(actor, key, mode, 0, disabled)
+    }]
+  };
+}
+
+/**
+ * SotDL 6.1.14: an attack with an item whose boons or banes come from somewhere (effects, the item, the target),
+ * asking first so the player sees them and can switch some off, as the system's own roll dialog does. Null when
+ * the roll has no such sources (the item is used straight away). Only on this device.
+ * @param {Actor|null} actor
+ * @param {string} itemId
+ * @returns {Prompt|null}
+ */
+function itemRollPrompt(actor, itemId) {
+  const item = actor?.items.get(itemId);
+  if ( !item || !sys.boonSources(actor, { itemId })?.length ) return null;
+  return {
+    key: `roll:${actor.uuid}:item:${itemId}:${foundry.utils.randomID()}`,
+    kind: "roll",
+    local: true,
+    actor,
+    rollKey: `useItem:${itemId}`,
+    icon: "fa-solid fa-dice-d20",
+    title: fmt("AVTTC.Prompt.Item.Title", { item: item.name }),
+    text: fmt("AVTTC.Prompt.Item.Text", { name: actor.name, item: item.name }),
+    rollMode: true,
+    // The user's targets when the prompt is drawn (they may change while it is open).
+    sources: () => sys.boonSources(actor, { itemId }),
+    choices: [{
+      label: fmt("AVTTC.Prompt.Item.Roll", { item: item.name }),
+      icon: "fa-solid fa-dice-d20",
+      run: (mode, disabled) => sys.useItem(actor, itemId, mode, { disabled })
     }]
   };
 }
@@ -351,10 +387,54 @@ function checkRollPrompt(actor, action, data) {
  */
 export function askSheetRoll(queue, actor, action, data) {
   if ( !sys.FEATURES.abilityRollPrompt ) return false;
-  const prompt = BUILDERS[game.system.id]?.sheetRoll(actor, action, data);
+  return queueLocal(queue, BUILDERS[game.system.id]?.sheetRoll(actor, action, data));
+}
+
+/**
+ * Using an item that rolls with boons or banes from somewhere (SotDL 6.1.14, itemRollPrompt) asks first. True when
+ * the use is taken care of, false to use it straight away (no sources, another system, or an older SotDL).
+ * @param {PromptQueue} queue
+ * @param {Actor} actor
+ * @param {string} itemId
+ * @returns {boolean}
+ */
+export function askItemRoll(queue, actor, itemId) {
+  return queueLocal(queue, itemRollPrompt(actor, itemId));
+}
+
+/**
+ * Queue a prompt started on this device, unless the same one is already up (a second tap). False without a prompt.
+ * @param {PromptQueue} queue
+ * @param {Prompt|null} prompt
+ * @returns {boolean}
+ */
+function queueLocal(queue, prompt) {
   if ( !prompt ) return false;
-  if ( !queue.has(p => p.local && (p.actor === actor) && (p.rollKey === prompt.rollKey)) ) queue.add(prompt);
+  if ( !queue.has(p => p.local && (p.actor === prompt.actor) && (p.rollKey === prompt.rollKey)) ) queue.add(prompt);
   return true;
+}
+
+/**
+ * Boon sources (the adapter's boonSources) as template rows: boons "+n", banes "−n", and whether each still counts.
+ * Prompts and the phone's use dialog draw these. Null when there are none.
+ * @param {{id: string, label: string, value: number}[]|null} sources
+ * @param {Set<string>} [disabled]  Source ids switched off: shown, but not counted.
+ * @returns {{id: string, label: string, value: string, enabled: boolean}[]|null}
+ */
+export function sourceRows(sources, disabled) {
+  if ( !sources?.length ) return null;
+  return sources.map(({ id, label, value }) => ({
+    id, label, value: (value > 0) ? `+${value}` : `−${-value}`, enabled: !disabled?.has(id)
+  }));
+}
+
+/**
+ * Switch a boon source off, or back on (`disabled` holds the ids switched off).
+ * @param {Set<string>} disabled
+ * @param {string} id
+ */
+export function toggleSourceIn(disabled, id) {
+  if ( !disabled.delete(id) ) disabled.add(id);
 }
 
 /* -------------------------------------------- */
@@ -472,6 +552,7 @@ export class PromptQueue {
     const { key, kind, icon, title, text, tally, rollMode } = prompt;
     return {
       key, kind, icon, title, text, tally,
+      sources: sourceRows(prompt.sources?.(), prompt.disabled),
       choices: prompt.choices.map(({ label, icon }) => ({ label, icon })),
       modes: rollMode ? modes : null,
       scale: rollMode ? sys.rollModeScale() : null,
@@ -514,6 +595,17 @@ export class PromptQueue {
     if ( this.#items.length !== before ) this.onChange();
   }
 
+  /**
+   * Switch one of the current prompt's boon sources off or back on.
+   * @param {string} id
+   */
+  toggleSource(id) {
+    const prompt = this.current;
+    if ( !prompt?.sources || !id ) return;
+    toggleSourceIn(prompt.disabled ??= new Set(), id);
+    this.onChange();
+  }
+
   /** "Not now": drop the current prompt here and on the player's other devices. */
   dismiss() {
     const prompt = this.#items.shift();
@@ -533,6 +625,7 @@ export class PromptQueue {
     const choice = prompt?.choices[Number(index)];
     if ( !choice ) return;
     this.dismiss();
-    return prompt.rollMode ? d20(mode => choice.run(mode)) : choice.run("normal");
+    const disabled = [...(prompt.disabled ?? [])];
+    return prompt.rollMode ? d20(mode => choice.run(mode, disabled)) : choice.run("normal", disabled);
   }
 }

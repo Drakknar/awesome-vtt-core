@@ -130,9 +130,11 @@ export function waitFor(test, timeout) {
  * Switch an effect of this actor (or one of its items) on or off.
  * @param {Actor} actor
  * @param {string} uuid
+ * @param {(effect: ActiveEffect, disabled: boolean) => object} [extra]  More fields for the update, given the new
+ *   `disabled` (an adapter's own rule, e.g. SotDL restarting a temporary effect switched on).
  * @returns {Promise<void>|undefined}
  */
-export function toggleEffect(actor, uuid) {
+export function toggleEffect(actor, uuid, extra) {
   const initial = fromUuidSync(uuid, { strict: false });
   if ( !initial ) return;
   const disabled = !initial.disabled;
@@ -141,8 +143,67 @@ export function toggleEffect(actor, uuid) {
     const effect = fromUuidSync(uuid, { strict: false });
     const owner = (effect?.parent === actor) || (effect?.parent?.parent === actor);
     if ( !effect || !owner || (effect.disabled === disabled) ) return;
-    await raceTolerant(() => effect.update({ disabled }));
+    await raceTolerant(() => effect.update({ ...extra?.(effect, disabled), disabled }));
   });
+}
+
+/**
+ * Transformed characters (dnd5e's polymorph / wild shape, SotDL 6.1.13's transformInto): the system creates a new
+ * actor flagged with `flags.<system>.<flag>` and `originalActor` (the id of the character it came from), relinks the
+ * tokens to it, and deletes it on `revertOriginalForm`. Seats and the phone keep the original's id and show its
+ * current form. Each adapter calls this with its system's flag.
+ * @param {string} flag  "isPolymorphed" (dnd5e) or "isTransformed" (demonlord).
+ * @returns {{isTransformed: (actor: Actor|null) => boolean, originalId: (actor: Actor|null) => string|undefined,
+ *   currentForm: (actor: Actor|null) => Actor|null, revertForm: (actor: Actor|null) => Promise<unknown>|undefined,
+ *   transformChanged: (actor: Actor|null, change: object, ids?: Iterable<string>) => boolean,
+ *   isForm: (actor: Actor|null) => boolean}}
+ */
+export function transformHelpers(flag) {
+  const read = (actor, key) => foundry.utils.getProperty(actor ?? {}, `flags.${game.system.id}.${key}`);
+  const isTransformed = actor => !!read(actor, flag);
+  const KEYS = [flag, "originalActor"];
+  return {
+    isTransformed,
+    /*
+     * A transformed form, or one left behind by a player's revert (only a GM can delete it, so the system just removes
+     * `<flag>` and keeps `originalActor`, the id of another actor). Character lists leave both out. Not an actor
+     * whose `originalActor` is itself, nor anything on a system without these flags.
+     */
+    isForm: actor => {
+      const original = read(actor, "originalActor");
+      return isTransformed(actor) || (!!original && (original !== actor?.id));
+    },
+    // The character a transformed form came from (its own id otherwise): the id seats and the phone keep.
+    originalId: actor => (isTransformed(actor) && read(actor, "originalActor")) || actor?.id,
+    // The newest form of a character this user owns, else the character itself.
+    currentForm: actor => {
+      if ( !actor || isTransformed(actor) ) return actor ?? null;
+      const isForm = a => isTransformed(a) && (read(a, "originalActor") === actor.id) && a.isOwner;
+      return game.actors.contents.findLast(isForm) ?? actor;
+    },
+    // Back to the original form (the system's own method), for the form's owners.
+    revertForm: actor => ((isTransformed(actor) && actor.isOwner)
+      ? actor.revertOriginalForm?.({ renderSheet: false }) : undefined),
+    /*
+     * For `updateActor`: did the change set or remove the transform flags (a player's revert only removes them) on
+     * one of `ids` or a form of one of them (any actor without `ids`)? The system writes its other flags often (SotDL
+     * afflictions, NPCs too), so those changes are left out. When `originalActor` itself was removed, the character
+     * is unknown and the change counts.
+     */
+    transformChanged: (actor, change, ids) => {
+      const flags = change?.flags;
+      const system = game.system.id;
+      const own = flags?.[system];
+      const has = key => !!own && (typeof own === "object") && ((key in own) || (`-=${key}` in own));
+      const cleared = !!flags && (typeof flags === "object") && (`-=${system}` in flags);
+      if ( !cleared && !KEYS.some(has) ) return false;
+      if ( !ids ) return true;
+      const original = read(actor, "originalActor");
+      if ( !original && (cleared || has("originalActor")) ) return true;
+      const related = new Set(ids);
+      return related.has(original) || related.has(actor?.id);
+    }
+  };
 }
 
 /**

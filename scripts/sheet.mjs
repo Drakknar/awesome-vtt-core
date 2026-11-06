@@ -76,7 +76,8 @@ export const D20_ACTIONS = new Set(["rollAbility", "rollSave", "rollSkill", "dea
 export const SHEET_ACTIONS = new Set([
   ...D20_ACTIONS, "toggleInspiration", "toggleCondition", "shortRest", "longRest",
   "usesAdjust", "slotAdjust", "invQty", "invEquip", "invAttune",
-  "endConcentration", "exhaustion", "toggleEffect", "spellPrepare", "invToParty", "toggleFavorite", "trackAdjust"
+  "endConcentration", "exhaustion", "toggleEffect", "spellPrepare", "invToParty", "toggleFavorite", "trackAdjust",
+  "revertForm"
 ]);
 
 /**
@@ -113,6 +114,7 @@ export function runSheetAction(actor, action, data, advMode = "normal", { toggle
     case "trackAdjust": return sys.changeTrack(actor, data.track, delta);
     case "endConcentration": return sys.endConcentration(actor, data.effectId);
     case "exhaustion": return sys.changeExhaustion(actor, delta);
+    case "revertForm": return sys.revertForm(actor);
     case "toggleEffect":
       toggled?.add(data.effectUuid);
       return sys.toggleEffect(actor, data.effectUuid);
@@ -162,6 +164,10 @@ export function quickActionsContext(actor, { tab, tabLabel, toggled, hpMode, hpL
     deathSave: summary.dying && sys.FEATURES.deathSaves,
     death: summary.death,
     rests: sys.getRests(),
+    // A transformed form (dnd5e polymorph / wild shape, SotDL 6.1.13 transformInto): back to the character. Only
+    // with the map: both systems relink the tokens to the original only `if (canvas.ready)`, so a canvas-less
+    // client (the phone) would leave them on a deleted or orphaned form.
+    revert: !!canvas?.ready && sys.isTransformed(actor) && actor.isOwner,
     hpModes: sys.HP_MODES.map(id => ({ id, label: game.i18n.localize(hpLabel(id)), active: id === hpMode }))
   };
 }

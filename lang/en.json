@@ -54,6 +54,11 @@
         "rollSkill": "{name} check",
         "Text": "Does {actor}'s {roll} have advantage or disadvantage?",
         "Roll": "Roll the {roll}"
+      },
+      "Item": {
+        "Title": "Use {item}",
+        "Text": "{name} uses {item}. Boons and banes from the list below are added; switch off any that don't apply.",
+        "Roll": "Use {item}"
       }
     },
     "Stat": {
@@ -75,7 +80,9 @@
       "banes": "{n} banes",
       "title": "Boons and banes (next roll)",
       "banesEnd": "Banes",
-      "boonsEnd": "Boons"
+      "boonsEnd": "Boons",
+      "sources": "Boons and banes from",
+      "sourceToggle": "Count this boon or bane"
     },
     "Roll": {
       "challenge": "Challenge"
@@ -112,6 +119,9 @@
         "Name": "Players may add items from compendiums",
         "Hint": "In the table seats' and the phone's Compendium panel, an opened weapon, armour or other gear item gets an \"Add to inventory\" button for the player's character. Turn it off if only the GM hands out gear."
       }
+    },
+    "Transform": {
+      "revert": "Revert to original form"
     }
   }
 }

@@ -16,14 +16,48 @@
  * - Damage isn't rolled after attacks automatically; the notice of an attack that didn't miss offers it
  *   (rollDamageFrom): the card is rendered (the system binds its buttons in renderChatMessageHTML) and its damage
  *   buttons clicked, as the player would.
+ * - Boon and bane sources (6.1.14): the system's roll dialog lists where a roll's boons and banes come from and lets
+ *   the player switch some off; the roll methods take that as a trailing `selection = { disabled: [ids] }`. Our
+ *   prompts and the phone's use dialog do the same (boonSources, and `disabled` on rollAbility / useItem). Older
+ *   systems have no list (boonSources returns null) and ignore the extra argument.
+ * - Transformations (6.1.13): see common.mjs transformHelpers.
  */
 
 import {
   MAX_CURRENCY, MAX_QUANTITY, byName, signed, getToggleEffects, queueEffects, raceTolerant, waitFor, plainText,
-  parseHTML, onRollResult as onRollResultFor, hpAmount, changeQuantity, toggleEffect, rollNotice
+  parseHTML, onRollResult as onRollResultFor, hpAmount, changeQuantity, toggleEffect as toggleEffectFor, rollNotice,
+  transformHelpers
 } from "./common.mjs";
 
-export { hpAmount, changeQuantity, toggleEffect, rollNotice };
+export { hpAmount, changeQuantity, rollNotice };
+
+/** Transformed characters (6.1.13 transformInto / revertOriginalForm): see common.mjs transformHelpers. */
+export const { isTransformed, originalId, currentForm, revertForm, transformChanged, isForm } =
+  transformHelpers("isTransformed");
+
+/**
+ * Switch an effect on or off. A temporary effect switched on restarts its duration from now, so it doesn't keep its
+ * old start time. Unlike the system's own sheet toggle (6.1.14 `onToggleEffect`, which sends the derived
+ * `duration._worldTime`), this sets Foundry 14's stored `start` (core's `ActiveEffect.getEffectStart()`, or the same
+ * fields where that is missing). Nothing extra when switching off.
+ * @param {Actor} actor
+ * @param {string} uuid
+ * @returns {Promise<void>|undefined}
+ */
+export const toggleEffect = (actor, uuid) => toggleEffectFor(actor, uuid,
+  (effect, disabled) => ((!disabled && effect.isTemporary) ? { start: effectStart() } : {}));
+
+/**
+ * Where a temporary effect switched on now starts: core's own start data, else the v14 `start` fields.
+ * @returns {object}
+ */
+function effectStart() {
+  const start = CONFIG.ActiveEffect.documentClass.getEffectStart?.();
+  if ( start ) return start;
+  const combat = game.combat;
+  return { time: game.time.worldTime, combat: combat?.id ?? null, round: combat?.round ?? null,
+    turn: combat?.turn ?? null };
+}
 
 const CORE_ID = "awesome-vtt-core";
 const loc = key => (key ? game.i18n.localize(key) : "");
@@ -453,12 +487,14 @@ export function itemNeedsTargets(item) {
  * @param {string} key
  * @param {string} mode
  * @param {number} [extra]  Boons (or banes) the request itself gives.
+ * @param {string[]} [disabled]  Boon sources the player switched off (boonSources ids).
  * @returns {Promise<unknown>|null}
  */
-export function rollAbility(actor, key, mode, extra = 0) {
+export function rollAbility(actor, key, mode, extra = 0, disabled = []) {
   const attribute = actor.getAttribute?.(key);
   if ( !attribute || blocked(actor, "challenge", key) ) return null;
-  return actor.rollAttributeChallenge(attribute, boonsOf(mode) + (parseInt(extra) || 0), 0);
+  const boons = boonsOf(mode) + (parseInt(extra) || 0);
+  return actor.rollAttributeChallenge(attribute, boons, 0, undefined, selectionOf(disabled));
 }
 
 export const rollSave = () => null;
@@ -475,12 +511,16 @@ export const rollDeathSave = () => null;
  * @param {object} [options]
  * @param {TokenDocument[]} [options.targets]  Targets picked without the map (the phone); otherwise the user's.
  * @param {number} [options.modifier]          A flat modifier for the roll.
+ * @param {string[]} [options.disabled]        Boon sources the player switched off (boonSources ids).
  * @returns {Promise<unknown>}
  */
-export async function useItem(actor, itemId, mode = "normal", { targets, modifier = 0 } = {}) {
+export async function useItem(actor, itemId, mode = "normal", { targets, modifier = 0, disabled } = {}) {
   const item = actor?.items.get(itemId);
   if ( !item ) return null;
-  const roll = { boons: boonsOf(mode), modifier: parseInt(modifier) || 0, targets: targets ?? targetTokens() };
+  const roll = {
+    boons: boonsOf(mode), modifier: parseInt(modifier) || 0, targets: targets ?? targetTokens(),
+    selection: selectionOf(disabled)
+  };
   switch ( item.type ) {
     case "weapon": return attackWith(actor, item, roll);
     case "spell": return castSpell(actor, item, roll);
@@ -498,9 +538,10 @@ export async function useItem(actor, itemId, mode = "normal", { targets, modifie
  * @param {number} root0.boons
  * @param {number} root0.modifier
  * @param {Array<Token|TokenDocument>} root0.targets
+ * @param {object} [root0.selection]
  * @returns {Promise<void>}
  */
-async function attackWith(actor, item, { boons, modifier, targets }) {
+async function attackWith(actor, item, { boons, modifier, targets, selection }) {
   if ( blocked(actor, "action", item.system.action?.attack) ) return;
   const consume = item.system.consume ?? {};
   let ammo = null;
@@ -509,8 +550,10 @@ async function attackWith(actor, item, { boons, modifier, targets }) {
     if ( !ammo ) return ui.notifications.warn(game.i18n.format("DL.WeaponNoAmmo", { weaponName: item.name }));
     if ( !(ammo.system.quantity > 0) ) return ui.notifications.warn(game.i18n.format("DL.WeaponRunOutOfAmmo", { weaponName: item.name }));
   }
-  if ( targets.length ) for ( const target of targets ) await actor.rollItemAttack(item, boons, modifier, target);
-  else await actor.rollItemAttack(item, boons, modifier);
+  if ( targets.length ) {
+    for ( const target of targets ) await actor.rollItemAttack(item, boons, modifier, target, selection);
+  }
+  else await actor.rollItemAttack(item, boons, modifier, null, selection);
   if ( ammo ) await ammo.update({ "system.quantity": Math.max(ammo.system.quantity - (int(consume.amount) || 1), 0) });
 }
 
@@ -522,9 +565,10 @@ async function attackWith(actor, item, { boons, modifier, targets }) {
  * @param {number} root0.boons
  * @param {number} root0.modifier
  * @param {Array<Token|TokenDocument>} root0.targets
+ * @param {object} [root0.selection]
  * @returns {Promise<void>}
  */
-async function castSpell(actor, item, { boons, modifier, targets }) {
+async function castSpell(actor, item, { boons, modifier, targets, selection }) {
   const attack = item.system.action?.attack;
   const attacks = (item.system.spelltype === "Attack") && attack;
   if ( attacks && blocked(actor, "attack", attack) ) return;
@@ -534,9 +578,9 @@ async function castSpell(actor, item, { boons, modifier, targets }) {
   if ( max && (used >= max) ) return ui.notifications.warn(loc("DL.SpellMaxUsesReached"));
   await item.update({ "system.castings.value": String(used + 1) });
   if ( attacks && targets.length ) {
-    for ( const target of targets ) await actor.useSpell(item, boons, modifier, [target]);
+    for ( const target of targets ) await actor.useSpell(item, boons, modifier, [target], selection);
   }
-  else await actor.useSpell(item, attacks ? boons : 0, attacks ? modifier : 0);
+  else await actor.useSpell(item, attacks ? boons : 0, attacks ? modifier : 0, [], attacks ? selection : undefined);
 }
 
 /**
@@ -546,15 +590,16 @@ async function castSpell(actor, item, { boons, modifier, targets }) {
  * @param {object} root0
  * @param {number} root0.boons
  * @param {number} root0.modifier
+ * @param {object} [root0.selection]
  * @returns {Promise<unknown>}
  */
-async function useTalent(actor, item, { boons, modifier }) {
+async function useTalent(actor, item, { boons, modifier, selection }) {
   if ( blocked(actor, "challenge", "strength") ) return;
   const used = int(item.system.uses?.value);
   const max = int(item.system.uses?.max);
   if ( max && (used >= max) ) return ui.notifications.warn(loc("DL.TalentMaxUsesReached"));
   const attacks = !!item.system.action?.attack;
-  return actor.useTalent(item, attacks ? boons : 0, attacks ? modifier : 0);
+  return actor.useTalent(item, attacks ? boons : 0, attacks ? modifier : 0, attacks ? selection : undefined);
 }
 
 /**
@@ -564,9 +609,10 @@ async function useTalent(actor, item, { boons, modifier }) {
  * @param {object} root0
  * @param {number} root0.boons
  * @param {number} root0.modifier
+ * @param {object} [root0.selection]
  * @returns {Promise<unknown>}
  */
-async function useGear(actor, item, { boons, modifier }) {
+async function useGear(actor, item, { boons, modifier, selection }) {
   // Incantations cast the spell they hold: the system's own path, with its dialog.
   if ( (item.system.consumabletype === "I") && (item.system.contents?.length === 1) ) return actor.rollItem(item.id);
   let remove = false;
@@ -579,8 +625,143 @@ async function useGear(actor, item, { boons, modifier }) {
     await item.update({ "system.quantity": item.system.quantity - 1 });
   }
   const attacks = !!item.system.action?.attack;
-  await actor.useItem(item, attacks ? boons : 0, attacks ? modifier : 0);
+  await actor.useItem(item, attacks ? boons : 0, attacks ? modifier : 0, attacks ? selection : undefined);
   if ( remove ) await item.delete();
+}
+
+/* -------------------------------------------- */
+/*  Boon and bane sources (6.1.14)              */
+/* -------------------------------------------- */
+
+/**
+ * The roll methods' trailing `selection` argument, or undefined when nothing is switched off.
+ * @param {string[]|undefined} disabled
+ * @returns {{disabled: string[]}|undefined}
+ */
+const selectionOf = disabled => (disabled?.length ? { disabled: [...disabled] } : undefined);
+
+/**
+ * Does this system version list boon sources and take a selection? (6.1.14 and later)
+ * @returns {boolean}
+ */
+const hasBoonSources = () => !foundry.utils.isNewerVersion("6.1.14", game.system.version);
+
+/**
+ * A copy of the system's `collectBoonSources` (demonlord 6.1.14, `src/module/rolls/boon-sources.js`), which isn't
+ * exported: every boon and bane of a roll with a label, and an id the roll methods' `selection.disabled` matches.
+ * Keep in step with the system's file on its updates (the upstream watch reviews each release).
+ * @param {Actor} actor
+ * @param {object} context
+ * @param {"attack"|"challenge"} [context.kind]
+ * @param {string} [context.attribute]
+ * @param {string} [context.defense]
+ * @param {Item} [context.item]
+ * @param {Actor|null} [context.target]
+ * @param {string} [context.category]  "weapon" or "spell".
+ * @returns {{id: string, label: string, value: number, hidden: boolean}[]}
+ */
+function collectBoonSources(actor, { kind = "attack", attribute, defense, item, target, category } = {}) {
+  const sources = [];
+  const add = (id, label, value, hidden = false) => {
+    if ( value ) sources.push({ id, label, value, hidden });
+  };
+  const collect = (owner, key, sign = 1, hidden = false) => {
+    if ( !owner ) return;
+    const total = int(foundry.utils.getProperty(owner, key));
+    const changes = Array.from(owner.allApplicableEffects())
+      .filter(e => !e.disabled && !e.isSuppressed)
+      .flatMap(e => e.changes.map((change, index) => ({ effect: e, change, index })))
+      .filter(c => c.change.key === key);
+    // Only split additive, literal changes when they fully explain the prepared value.
+    const safe = changes.every(({ change }) => (Number(change.mode) === 2) && /^-?\d+$/.test(String(change.value)))
+      && (changes.reduce((sum, { change }) => sum + int(change.value), 0) === total);
+    if ( safe ) {
+      for ( const { effect, change, index } of changes ) {
+        const reveal = hidden && effect.name?.startsWith(loc("DL.surrounded"))
+          && setting("optionalRuleSurroundingRevealChatCard");
+        const against = (sign < 0) ? ` [${loc("DL.ActionTarget")}: ${owner.name || ""}]` : "";
+        add(`${owner.uuid}:${key}:${effect.id}:${index}`, `${effect.name}${against}`, sign * int(change.value),
+          hidden && !reveal);
+      }
+    }
+    else add(`${owner.uuid}:${key}`, `${loc("DL.ModsListBoonsBanes")} (${key.split(".").pop()})`, sign * total, hidden);
+  };
+  const prefix = `system.bonuses.${kind}.boons`;
+  for ( const key of new Set([attribute, "all", category].filter(Boolean)) ) collect(actor, `${prefix}.${key}`);
+  if ( kind === "attack" ) {
+    add(`item:${item?.uuid}`, item?.name, int(item?.system.action?.boonsbanes));
+    for ( const key of new Set([defense, "all", category].filter(Boolean)) ) {
+      collect(target, `system.bonuses.defense.boons.${key}`, -1, true);
+    }
+    add(`target:${target?.uuid}:fear`, loc("DL.CreatureHorrifying"), -int(actor.getTargetAttackBane?.(target)),
+      !setting("optionalRuleRevealHorrifyingBane"));
+    const requirement = item?.system.requirement;
+    if ( (category === "weapon") && item?.system.wear
+      && (int(requirement?.minvalue) > actor.getAttribute(requirement?.attribute)?.value) ) {
+      add(`item:${item.uuid}:requirement`, loc("DL.Requirement"), -1);
+    }
+  }
+  return sources;
+}
+
+/**
+ * What the system's roll method for this item reads, as its roll dialog passes it (`launchRollDialog`'s
+ * rollContext): the attack attribute (with the finesse rule), the defense, the category, and whether a target counts
+ * only when it is the only one (talents and gear read the user's targets themselves). Null for an item without an
+ * attack roll (a weapon always has one, as the system's rollItemAttack rolls it with or without an attribute).
+ * @param {Actor} actor
+ * @param {Item|undefined} item
+ * @returns {object|null}
+ */
+function itemRollContext(actor, item) {
+  const action = item?.system.action;
+  // A weapon always rolls its attack, even without an attribute (finesse picks one, vehicles may have none).
+  if ( !action || (!action.attack && (item.type !== "weapon")) ) return null;
+  if ( (item.type === "spell") && (item.system.spelltype !== "Attack") ) return null;
+  let attribute = action.attack?.toLowerCase();
+  const defense = action.against?.toLowerCase();
+  if ( item.type === "weapon" ) {
+    if ( !attribute && setting("finesseAutoSelect") && item.system.properties?.toLowerCase().includes("finesse") ) {
+      const a = actor.system.attributes ?? {};
+      attribute = (a.strength?.value > a.agility?.value) ? "strength" : "agility";
+    }
+    return { attribute, defense, item, category: "weapon", singleTarget: false };
+  }
+  if ( item.type === "spell" ) return { attribute, defense, item, category: "spell", singleTarget: false };
+  return { attribute, defense, item, singleTarget: true };
+}
+
+/**
+ * Where a roll's boons and banes come from (demonlord 6.1.14), to show before rolling and let the player switch
+ * some off (their ids go to rollAbility / useItem as `disabled`). A challenge roll with `attribute`, or an item's
+ * attack with `itemId` (against `targets`, else the user's). Sources from several targets are listed once each, as
+ * the system's dialog does. Sources the system hides from players (a target's defenses, a horrifying target unless
+ * revealed) are labelled "Other" for them. Null on older systems, or when the item doesn't roll.
+ * @param {Actor|null} actor
+ * @param {object} options
+ * @param {string} [options.attribute]
+ * @param {string} [options.itemId]
+ * @param {Array<Token|TokenDocument>} [options.targets]
+ * @returns {{id: string, label: string, value: number}[]|null}
+ */
+export function boonSources(actor, { attribute, itemId, targets } = {}) {
+  if ( !actor || !hasBoonSources() ) return null;
+  let contexts;
+  if ( attribute ) contexts = [{ kind: "challenge", attribute }];
+  else {
+    const context = itemRollContext(actor, actor.items.get(itemId));
+    if ( !context ) return null;
+    const list = targets ?? targetTokens();
+    const applicable = (context.singleTarget && (list.length !== 1)) ? [] : list;
+    contexts = (applicable.length ? applicable : [null]).map(t => ({ ...context, target: t?.actor ?? null }));
+  }
+  const byId = new Map();
+  for ( const context of contexts ) {
+    for ( const source of collectBoonSources(actor, context) ) byId.set(source.id, source);
+  }
+  return [...byId.values()].map(({ id, label, value, hidden }) => ({
+    id, value, label: (hidden && !game.user.isGM) ? loc("DL.OtherUnknown") : (label ?? "")
+  }));
 }
 
 /* -------------------------------------------- */
