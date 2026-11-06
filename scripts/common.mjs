@@ -161,16 +161,17 @@ export function transformHelpers(flag) {
   const isTransformed = actor => !!read(actor, flag);
   return {
     isTransformed,
-    /** The character a transformed form came from (its own id otherwise): the id seats and the phone keep. */
+    // The character a transformed form came from (its own id otherwise): the id seats and the phone keep.
     originalId: actor => (isTransformed(actor) && read(actor, "originalActor")) || actor?.id,
-    /** The newest form of a character this user owns, else the character itself. */
+    // The newest form of a character this user owns, else the character itself.
     currentForm: actor => {
       if ( !actor || isTransformed(actor) ) return actor ?? null;
-      return game.actors.contents.findLast(a => isTransformed(a) && (read(a, "originalActor") === actor.id) && a.isOwner)
-        ?? actor;
+      const isForm = a => isTransformed(a) && (read(a, "originalActor") === actor.id) && a.isOwner;
+      return game.actors.contents.findLast(isForm) ?? actor;
     },
-    /** Back to the original form (the system's own method), for the form's owners. */
-    revertForm: actor => (isTransformed(actor) && actor.isOwner ? actor.revertOriginalForm?.({ renderSheet: false }) : undefined)
+    // Back to the original form (the system's own method), for the form's owners.
+    revertForm: actor => ((isTransformed(actor) && actor.isOwner)
+      ? actor.revertOriginalForm?.({ renderSheet: false }) : undefined)
   };
 }
 

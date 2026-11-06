@@ -31,7 +31,7 @@ import {
 
 export { hpAmount, changeQuantity, rollNotice };
 
-/** transformInto / revertOriginalForm (6.1.13): see common.mjs transformHelpers. */
+/** Transformed characters (6.1.13 transformInto / revertOriginalForm): see common.mjs transformHelpers. */
 export const { isTransformed, originalId, currentForm, revertForm } = transformHelpers("isTransformed");
 
 /**
@@ -475,10 +475,11 @@ export function itemNeedsTargets(item) {
  * @param {string[]} [disabled]  Boon sources the player switched off (boonSources ids).
  * @returns {Promise<unknown>|null}
  */
-export function rollAbility(actor, key, mode, extra = 0, disabled) {
+export function rollAbility(actor, key, mode, extra = 0, disabled = []) {
   const attribute = actor.getAttribute?.(key);
   if ( !attribute || blocked(actor, "challenge", key) ) return null;
-  return actor.rollAttributeChallenge(attribute, boonsOf(mode) + (parseInt(extra) || 0), 0, undefined, selectionOf(disabled));
+  const boons = boonsOf(mode) + (parseInt(extra) || 0);
+  return actor.rollAttributeChallenge(attribute, boons, 0, undefined, selectionOf(disabled));
 }
 
 export const rollSave = () => null;
@@ -502,7 +503,8 @@ export async function useItem(actor, itemId, mode = "normal", { targets, modifie
   const item = actor?.items.get(itemId);
   if ( !item ) return null;
   const roll = {
-    boons: boonsOf(mode), modifier: parseInt(modifier) || 0, targets: targets ?? targetTokens(), selection: selectionOf(disabled)
+    boons: boonsOf(mode), modifier: parseInt(modifier) || 0, targets: targets ?? targetTokens(),
+    selection: selectionOf(disabled)
   };
   switch ( item.type ) {
     case "weapon": return attackWith(actor, item, roll);
@@ -533,7 +535,9 @@ async function attackWith(actor, item, { boons, modifier, targets, selection }) 
     if ( !ammo ) return ui.notifications.warn(game.i18n.format("DL.WeaponNoAmmo", { weaponName: item.name }));
     if ( !(ammo.system.quantity > 0) ) return ui.notifications.warn(game.i18n.format("DL.WeaponRunOutOfAmmo", { weaponName: item.name }));
   }
-  if ( targets.length ) for ( const target of targets ) await actor.rollItemAttack(item, boons, modifier, target, selection);
+  if ( targets.length ) {
+    for ( const target of targets ) await actor.rollItemAttack(item, boons, modifier, target, selection);
+  }
   else await actor.rollItemAttack(item, boons, modifier, null, selection);
   if ( ammo ) await ammo.update({ "system.quantity": Math.max(ammo.system.quantity - (int(consume.amount) || 1), 0) });
 }
