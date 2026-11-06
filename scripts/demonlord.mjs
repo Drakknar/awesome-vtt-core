@@ -36,14 +36,28 @@ export const { isTransformed, originalId, currentForm, revertForm, transformChan
   transformHelpers("isTransformed");
 
 /**
- * Switch an effect on or off. A temporary effect also restarts its duration from now, as the system's own sheet
- * toggle does (6.1.14 `onToggleEffect`), so one switched back on doesn't keep its old start time.
+ * Switch an effect on or off. A temporary effect switched on restarts its duration from now, so it doesn't keep its
+ * old start time. Unlike the system's own sheet toggle (6.1.14 `onToggleEffect`, which sends the derived
+ * `duration._worldTime`), this sets Foundry 14's stored `start` (core's `ActiveEffect.getEffectStart()`, or the same
+ * fields where that is missing). Nothing extra when switching off.
  * @param {Actor} actor
  * @param {string} uuid
  * @returns {Promise<void>|undefined}
  */
 export const toggleEffect = (actor, uuid) => toggleEffectFor(actor, uuid,
-  effect => (effect.isTemporary ? { duration: { _worldTime: game.time.worldTime } } : {}));
+  (effect, disabled) => ((!disabled && effect.isTemporary) ? { start: effectStart() } : {}));
+
+/**
+ * Where a temporary effect switched on now starts: core's own start data, else the v14 `start` fields.
+ * @returns {object}
+ */
+function effectStart() {
+  const start = CONFIG.ActiveEffect.documentClass.getEffectStart?.();
+  if ( start ) return start;
+  const combat = game.combat;
+  return { time: game.time.worldTime, combat: combat?.id ?? null, round: combat?.round ?? null,
+    turn: combat?.turn ?? null };
+}
 
 const CORE_ID = "awesome-vtt-core";
 const loc = key => (key ? game.i18n.localize(key) : "");

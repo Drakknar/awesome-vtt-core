@@ -130,8 +130,8 @@ export function waitFor(test, timeout) {
  * Switch an effect of this actor (or one of its items) on or off.
  * @param {Actor} actor
  * @param {string} uuid
- * @param {(effect: ActiveEffect) => object} [extra]  More fields for the update (an adapter's own rule, e.g. SotDL
- *   restarting a temporary effect's duration).
+ * @param {(effect: ActiveEffect, disabled: boolean) => object} [extra]  More fields for the update, given the new
+ *   `disabled` (an adapter's own rule, e.g. SotDL restarting a temporary effect switched on).
  * @returns {Promise<void>|undefined}
  */
 export function toggleEffect(actor, uuid, extra) {
@@ -143,7 +143,7 @@ export function toggleEffect(actor, uuid, extra) {
     const effect = fromUuidSync(uuid, { strict: false });
     const owner = (effect?.parent === actor) || (effect?.parent?.parent === actor);
     if ( !effect || !owner || (effect.disabled === disabled) ) return;
-    await raceTolerant(() => effect.update({ ...extra?.(effect), disabled }));
+    await raceTolerant(() => effect.update({ ...extra?.(effect, disabled), disabled }));
   });
 }
 
