@@ -109,10 +109,19 @@ export function initPrompts({ show, close, enabled, isMine, announce, relayed = 
     if ( ("turn" in change) || ("round" in change) || ("started" in change) ) deathSave(combat);
   });
 
-  game.socket.on(CHANNEL, (data, senderId) => {
+  // The handler takes every argument: a relay counts only as (data, sender id), the id added by the server, and only
+  // from a GM. That layout is not verified in a live world, so another one is logged once (see the core's notes).
+  let warnedArity = false;
+  game.socket.on(CHANNEL, (...args) => {
+    const [data] = args;
     if ( (data?.type === "promptDone") && (typeof data.key === "string") && (data.key.length <= MAX_KEY) ) close(data.key);
-    // Only a GM's relay counts (the sender id comes from the server), and only for this user.
-    else if ( relayed && builders.readChallenge && (data?.type === "challengeRelay") && game.users.get(senderId)?.isGM ) {
+    else if ( relayed && builders.readChallenge && (data?.type === "challengeRelay") ) {
+      if ( args.length !== 2 ) {
+        if ( !warnedArity ) console.warn(`awesome-vtt-core | challengeRelay ignored: the socket handler got ${args.length} arguments, expected 2 (data, sender id).`);
+        warnedArity = true;
+        return;
+      }
+      if ( !game.users.get(args[1])?.isGM ) return;
       const relay = validRelay(data);
       if ( relay?.to.includes(game.user.id) ) challenge(relay);
     }
