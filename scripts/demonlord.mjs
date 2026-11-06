@@ -32,7 +32,8 @@ import {
 export { hpAmount, changeQuantity, rollNotice };
 
 /** Transformed characters (6.1.13 transformInto / revertOriginalForm): see common.mjs transformHelpers. */
-export const { isTransformed, originalId, currentForm, revertForm } = transformHelpers("isTransformed");
+export const { isTransformed, originalId, currentForm, revertForm, transformChanged } =
+  transformHelpers("isTransformed");
 
 /**
  * Switch an effect on or off. A temporary effect also restarts its duration from now, as the system's own sheet

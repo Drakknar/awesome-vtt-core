@@ -14,7 +14,8 @@ import {
 export { hpAmount, changeQuantity, toggleEffect, rollNotice };
 
 /** Polymorph and wild shape (dnd5e's transformInto): see common.mjs transformHelpers. */
-export const { isTransformed, originalId, currentForm, revertForm } = transformHelpers("isPolymorphed");
+export const { isTransformed, originalId, currentForm, revertForm, transformChanged } =
+  transformHelpers("isPolymorphed");
 
 /**
  * SotDL only (where boons and banes come from); dnd5e's advantage has no such list.

@@ -154,11 +154,13 @@ export function toggleEffect(actor, uuid, extra) {
  * current form. Each adapter calls this with its system's flag.
  * @param {string} flag  "isPolymorphed" (dnd5e) or "isTransformed" (demonlord).
  * @returns {{isTransformed: (actor: Actor|null) => boolean, originalId: (actor: Actor|null) => string|undefined,
- *   currentForm: (actor: Actor|null) => Actor|null, revertForm: (actor: Actor|null) => Promise<unknown>|undefined}}
+ *   currentForm: (actor: Actor|null) => Actor|null, revertForm: (actor: Actor|null) => Promise<unknown>|undefined,
+ *   transformChanged: (actor: Actor|null, change: object, ids?: Iterable<string>) => boolean}}
  */
 export function transformHelpers(flag) {
   const read = (actor, key) => foundry.utils.getProperty(actor ?? {}, `flags.${game.system.id}.${key}`);
   const isTransformed = actor => !!read(actor, flag);
+  const KEYS = [flag, "originalActor"];
   return {
     isTransformed,
     // The character a transformed form came from (its own id otherwise): the id seats and the phone keep.
@@ -171,7 +173,26 @@ export function transformHelpers(flag) {
     },
     // Back to the original form (the system's own method), for the form's owners.
     revertForm: actor => ((isTransformed(actor) && actor.isOwner)
-      ? actor.revertOriginalForm?.({ renderSheet: false }) : undefined)
+      ? actor.revertOriginalForm?.({ renderSheet: false }) : undefined),
+    /*
+     * For `updateActor`: did the change set or remove the transform flags (a player's revert only removes them) on
+     * one of `ids` or a form of one of them (any actor without `ids`)? The system writes its other flags often (SotDL
+     * afflictions, NPCs too), so those changes are left out. When `originalActor` itself was removed, the character
+     * is unknown and the change counts.
+     */
+    transformChanged: (actor, change, ids) => {
+      const flags = change?.flags;
+      const system = game.system.id;
+      const own = flags?.[system];
+      const has = key => !!own && (typeof own === "object") && ((key in own) || (`-=${key}` in own));
+      const cleared = !!flags && (typeof flags === "object") && (`-=${system}` in flags);
+      if ( !cleared && !KEYS.some(has) ) return false;
+      if ( !ids ) return true;
+      const original = read(actor, "originalActor");
+      if ( !original && (cleared || has("originalActor")) ) return true;
+      const related = new Set(ids);
+      return related.has(original) || related.has(actor?.id);
+    }
   };
 }
 
