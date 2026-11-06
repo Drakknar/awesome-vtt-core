@@ -458,15 +458,17 @@ export function openLevelUp(actor) {
 
 /**
  * How hurt a character is, to notice changes: damage taken (HP lost, as a rising number; temporary HP left out, since
- * a rest also clears it), and whether it is unconscious or dead.
+ * a rest also clears it), the HP maximum with temporary max HP (`effectiveMax`: when it drops, dnd5e lowers HP with
+ * it, which isn't damage; the caller counts only damage beyond the drop), and whether it is unconscious or dead.
  * @param {Actor|null} actor
- * @returns {{damage: number, statuses: string[]}}
+ * @returns {{damage: number, effectiveMax: number, statuses: string[]}}
  */
 export function healthState(actor) {
   const hp = actor?.system.attributes?.hp ?? {};
   const dead = CONFIG.specialStatusEffects?.DEFEATED ?? "dead";
   return {
     damage: -(Number(hp.value) || 0),
+    effectiveMax: Number(hp.effectiveMax) || 0,
     statuses: ["unconscious", dead].filter(id => actor?.statuses?.has(id))
   };
 }
