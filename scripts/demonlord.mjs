@@ -693,16 +693,17 @@ function collectBoonSources(actor, { kind = "attack", attribute, defense, item, 
  * What the system's roll method for this item reads, as its roll dialog passes it (`launchRollDialog`'s
  * rollContext): the attack attribute (with the finesse rule), the defense, the category, and whether a target counts
  * only when it is the only one (talents and gear read the user's targets themselves). Null for an item without an
- * attack roll.
+ * attack roll (a weapon always has one, as the system's rollItemAttack rolls it with or without an attribute).
  * @param {Actor} actor
  * @param {Item|undefined} item
  * @returns {object|null}
  */
 function itemRollContext(actor, item) {
   const action = item?.system.action;
-  if ( !action?.attack ) return null;
+  // A weapon always rolls its attack, even without an attribute (finesse picks one, vehicles may have none).
+  if ( !action || (!action.attack && (item.type !== "weapon")) ) return null;
   if ( (item.type === "spell") && (item.system.spelltype !== "Attack") ) return null;
-  let attribute = action.attack.toLowerCase();
+  let attribute = action.attack?.toLowerCase();
   const defense = action.against?.toLowerCase();
   if ( item.type === "weapon" ) {
     if ( !attribute && setting("finesseAutoSelect") && item.system.properties?.toLowerCase().includes("finesse") ) {
