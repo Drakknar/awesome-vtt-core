@@ -11,8 +11,11 @@ import { parseHTML, messageActor } from "./common.mjs";
  *   - request: a GM request message (group rest, save or check) listing the character;
  *   - initiative: the character's combatants without initiative in the active encounter (one prompt per character).
  * Shadow of the Demon Lord (no death saves or concentration checks in the system):
- *   - request: the system's "make a challenge roll" card, which the GM's challenge button whispers to the target's
- *     owners (attribute and boons from the card);
+ *   - request: the system's "make a challenge roll" card (attribute and boons from the card). The GM's challenge
+ *     button whispers it only to users whose assigned character has the target's name (demonlord 6.1.14
+ *     `ChatMessage.getWhisperRecipients(actor.name)`), so a table user without a character never gets it; the active
+ *     GM's client relays it on the core's socket (relayChallenges), and initPrompts with `relayed` takes the relay
+ *     from a GM only. Each card is prompted once, however it arrives.
  *   - initiative: a fast or slow turn (the default initiative mode), or the system's roll (its optional modes).
  * Each module decides which kinds are on (its own settings, all off by default), which characters are its own, and
  * how a prompt is shown. When a prompt is answered or dismissed on one device, the same prompt closes on the
@@ -31,6 +34,8 @@ import { parseHTML, messageActor } from "./common.mjs";
  *   dismissing it isn't sent to the player's other devices.
  * @property {function(): object[]|null} [sources]  SotDL 6.1.14: where the roll's boons and banes come from (the
  *   adapter's boonSources), read on each render; the player can switch them off (`disabled`).
+ * @property {string} [attribute]  SotDL challenge request: the attribute's name.
+ * @property {string} [boons]      SotDL challenge request: the card's own boons or banes as text ("" for none).
  * @property {Set<string>} [disabled]  Source ids switched off, passed to the choice's `run` as its second argument.
  * @property {{label: string, icon?: string, run: function(string, string[]): Promise}[]} choices
  */
@@ -43,6 +48,8 @@ const unique = list => [...new Set(list.filter(Boolean))];
 
 const CHANNEL = "module.awesome-vtt-core";
 const MAX_KEY = 200;
+/** Challenge cards already handled on this device (message id + actor), so a card is prompted once. */
+const MAX_SEEN = 500;
 
 /**
  * Watch for prompts (chat messages, turns and initiative) and hand them to the module; close those answered on
@@ -52,15 +59,32 @@ const MAX_KEY = 200;
  * @param {function(string): void} options.close         Close a prompt by key (answered on another device).
  * @param {function(string): boolean} options.enabled    Is a kind on? ("deathSave", "concentration", …)
  * @param {function(Actor): boolean} options.isMine      Is this character one this device prompts for?
+ * @param {function(Prompt, boolean): void} [options.announce]  SotDL: called once for each challenge request for one
+ *   of this device's characters, with whether it was shown as a prompt ("request" on), e.g. to tell the others.
+ * @param {boolean} [options.relayed]  Also take challenge requests the GM relays (relayChallenges), for a device
+ *   whose user isn't among the card's whisper recipients (the table screen).
  */
-export function initPrompts({ show, close, enabled, isMine }) {
+export function initPrompts({ show, close, enabled, isMine, announce, relayed = false }) {
   const builders = BUILDERS[game.system.id];
   if ( !sys.FEATURES.prompts || !builders ) return;
   const mine = actor => !!actor && !game.user.isGM && isMine(actor);
   const offer = prompt => prompt && show(prompt);
 
+  // A challenge request, from its card or relayed by the GM: once per card and character.
+  const seen = new Set();
+  const challenge = data => {
+    const prompt = challengePrompt(data, mine);
+    if ( !prompt || seen.has(prompt.key) ) return;
+    if ( seen.size >= MAX_SEEN ) seen.delete(seen.values().next().value);
+    seen.add(prompt.key);
+    const on = !!enabled("request");
+    if ( on ) offer(prompt);
+    announce?.(prompt, on);
+  };
+
   Hooks.on("createChatMessage", message => {
     if ( game.user.isGM ) return;
+    if ( builders.readChallenge ) challenge(builders.readChallenge(message));
     for ( const prompt of builders.fromMessage(message, enabled, mine) ) offer(prompt);
   });
 
@@ -85,13 +109,66 @@ export function initPrompts({ show, close, enabled, isMine }) {
     if ( ("turn" in change) || ("round" in change) || ("started" in change) ) deathSave(combat);
   });
 
-  game.socket.on(CHANNEL, data => {
+  game.socket.on(CHANNEL, (data, senderId) => {
     if ( (data?.type === "promptDone") && (typeof data.key === "string") && (data.key.length <= MAX_KEY) ) close(data.key);
+    // Only a GM's relay counts (the sender id comes from the server), and only for this user.
+    else if ( relayed && builders.readChallenge && (data?.type === "challengeRelay") && game.users.get(senderId)?.isGM ) {
+      const relay = validRelay(data);
+      if ( relay?.to.includes(game.user.id) ) challenge(relay);
+    }
   });
 
   // The page may be (re)loaded during a turn or before initiative was rolled.
   initiative();
   deathSave();
+}
+
+/**
+ * On the active GM's client (one GM, however many are connected): pass each new challenge card that the users in
+ * `recipients()` can't read (whispered to others) on to them over the core's socket, so their device can prompt as
+ * for a public card (initPrompts with `relayed`). Call on every client at "ready"; it does nothing in systems
+ * without challenge cards (dnd5e) or on other clients.
+ *
+ * Socket message: `{ type: "challengeRelay", to: [userId], messageId, actorUuid, attribute, boons, userId }`
+ * (attribute: a `CONFIG.DL.attributes` key; boons: the card's own boons, banes negative; userId: who made the card).
+ * Module sockets reach every client, so other players can read it: it says which character was asked for which
+ * roll, as the card's speaker does.
+ * @param {function(): string[]} recipients  Ids of the users to relay to (the table user).
+ */
+export function relayChallenges(recipients) {
+  const read = BUILDERS[game.system.id]?.readChallenge;
+  if ( !read || !game.socket ) return;
+  Hooks.on("createChatMessage", message => {
+    if ( !game.user.isGM || (game.users.activeGM !== game.user) ) return;
+    const whisper = message.whisper ?? [];
+    // A public card reaches everyone already.
+    if ( !whisper.length ) return;
+    const to = recipients().filter(id => !whisper.includes(id) && game.users.get(id)?.active);
+    const data = to.length ? read(message) : null;
+    if ( !data ) return;
+    game.socket.emit(CHANNEL, { type: "challengeRelay", to, ...data, userId: message.author?.id ?? null });
+  });
+}
+
+const ID = /^[A-Za-z0-9]{16}$/;
+const MAX_UUID = 200;
+const MAX_BOONS = 20;
+
+/**
+ * A relayed challenge request with every field checked, or null.
+ * @param {object} data
+ * @returns {{to: string[], messageId: string, actorUuid: string, attribute: string, boons: number,
+ *   userId: string|null}|null}
+ */
+function validRelay(data) {
+  const { to, messageId, actorUuid, attribute, boons, userId } = data;
+  if ( !Array.isArray(to) || (to.length > 20) || !to.every(id => (typeof id === "string") && ID.test(id)) ) return null;
+  if ( (typeof messageId !== "string") || !ID.test(messageId) ) return null;
+  if ( (typeof actorUuid !== "string") || !actorUuid || (actorUuid.length > MAX_UUID) ) return null;
+  if ( (typeof attribute !== "string") || !Object.hasOwn(CONFIG.DL?.attributes ?? {}, attribute) ) return null;
+  if ( !Number.isInteger(boons) || (Math.abs(boons) > MAX_BOONS) ) return null;
+  if ( (userId !== null) && ((typeof userId !== "string") || !ID.test(userId)) ) return null;
+  return { to, messageId, actorUuid, attribute, boons, userId };
 }
 
 /**
@@ -244,28 +321,48 @@ function boonsText(n) {
 }
 
 /**
- * The system's "make a challenge roll" card, whispered to the owners of the character it is for.
+ * What a new message asks for, if it is the system's "make a challenge roll" card: the message, the character (its
+ * token's uuid from the card, else the actor's), the attribute key and the card's own boons (banes negative).
  * @param {ChatMessage} message
- * @param {function(string): boolean} enabled
- * @param {function(Actor): boolean} mine
- * @returns {Prompt[]}
+ * @returns {{messageId: string, actorUuid: string, attribute: string, boons: number}|null}
  */
-function challengePrompts(message, enabled, mine) {
-  if ( !enabled("request") ) return [];
+function readChallengeCard(message) {
+  if ( !message?.content?.includes("make-challengeroll") ) return null;
   const card = parseHTML(message.content);
   const button = card.querySelector(".make-challengeroll .header");
-  if ( !button ) return [];
-  const actor = fromUuidQuiet(card.querySelector(".demonlord")?.dataset.tokenId)?.actor
-    ?? game.actors.get(button.dataset.actorid);
-  const key = attributeKey(button.dataset.attribute);
-  if ( !mine(actor) || !key ) return [];
-  const extra = parseInt(button.dataset.boonsbanes) || 0;
+  const attribute = attributeKey(button?.dataset.attribute);
+  if ( !attribute ) return null;
+  // The token's uuid when it resolves here (an unlinked token has its own actor), else the world actor's.
+  const tokenUuid = card.querySelector(".demonlord")?.dataset.tokenId;
+  const actorId = button.dataset.actorid;
+  const actorUuid = (tokenUuid && fromUuidQuiet(tokenUuid)?.actor) ? tokenUuid : (actorId ? `Actor.${actorId}` : "");
+  if ( !actorUuid ) return null;
+  const boons = Math.clamp(parseInt(button.dataset.boonsbanes) || 0, -MAX_BOONS, MAX_BOONS);
+  return { messageId: message.id, actorUuid, attribute, boons };
+}
+
+/**
+ * The prompt for a challenge request (from readChallengeCard, or relayed by the GM), if it is for one of this
+ * device's characters. The key is the same however the request arrived.
+ * @param {{messageId: string, actorUuid: string, attribute: string, boons: number}|null} data
+ * @param {function(Actor): boolean} mine
+ * @returns {Prompt|null}
+ */
+function challengePrompt(data, mine) {
+  if ( !data ) return null;
+  const doc = fromUuidQuiet(data.actorUuid);
+  const actor = { Actor: doc, Token: doc?.actor }[doc?.documentName] ?? null;
+  const key = data.attribute;
+  if ( !mine(actor) || !CONFIG.DL?.attributes?.[key] ) return null;
+  const extra = data.boons;
   const attribute = loc(CONFIG.DL.attributes[key]);
   const boons = boonsText(extra);
-  return [{
-    key: `challenge:${message.id}:${actor.uuid}`,
+  return {
+    key: `challenge:${data.messageId}:${actor.uuid}`,
     kind: "request",
     actor,
+    attribute,
+    boons,
     icon: "fa-solid fa-dice-d20",
     title: loc("AVTTC.Prompt.Challenge.Title"),
     text: fmt(boons ? "AVTTC.Prompt.Challenge.TextBoons" : "AVTTC.Prompt.Challenge.Text", { name: actor.name, attribute, boons }),
@@ -276,7 +373,7 @@ function challengePrompts(message, enabled, mine) {
       icon: "fa-solid fa-dice-d20",
       run: (mode, disabled) => sys.rollAbility(actor, key, mode, extra, disabled)
     }]
-  }];
+  };
 }
 
 /**
@@ -482,12 +579,15 @@ function initiativePrompts(enabled, mine, rollMode) {
 }
 
 /**
- * Prompts per system: built from a new chat message, and whether an initiative roll takes the Next roll choice
- * (SotDL's optional initiative modes roll with the system's own formula).
+ * Prompts per system: built from a new chat message (SotDL: its challenge cards, readChallenge), and whether an
+ * initiative roll takes the Next roll choice (SotDL's optional initiative modes roll with the system's own formula).
  */
 const BUILDERS = {
   dnd5e: { fromMessage: promptsFromMessage, initiativeRollMode: true, sheetRoll: checkRollPrompt },
-  demonlord: { fromMessage: challengePrompts, initiativeRollMode: false, sheetRoll: attributeRollPrompt }
+  // Challenge cards are read by readChallenge (initPrompts and relayChallenges), not by fromMessage.
+  demonlord: {
+    fromMessage: () => [], readChallenge: readChallengeCard, initiativeRollMode: false, sheetRoll: attributeRollPrompt
+  }
 };
 
 /* -------------------------------------------- */
