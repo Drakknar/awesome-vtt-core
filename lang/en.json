@@ -36,8 +36,8 @@
       },
       "Challenge": {
         "Title": "Challenge roll",
-        "Text": "The GM asks {name} for a {attribute} challenge roll.",
-        "TextBoons": "The GM asks {name} for a {attribute} challenge roll, with {boons}.",
+        "Text": "The GM asks {name} to make a challenge roll with {attribute}.",
+        "TextBoons": "The GM asks {name} to make a challenge roll with {attribute} and {boons}.",
         "Roll": "Roll {attribute}"
       },
       "Ability": {
