@@ -213,6 +213,13 @@ export function transformHelpers(flag) {
  */
 export const messageActor = message => message.getAssociatedActor?.() ?? ChatMessage.getSpeakerActor(message.speaker);
 
+/**
+ * A status effect's name (e.g. "Injured"), as the system registers it; its id when unknown.
+ * @param {string} id
+ * @returns {string}
+ */
+export const statusLabel = id => loc(CONFIG.statusEffects?.find(s => s.id === id)?.name) || id;
+
 /* -------------------------------------------- */
 /*  Roll results                                */
 /* -------------------------------------------- */

@@ -192,6 +192,21 @@ const statusChoices = (actor, ids) => {
   }));
 };
 
+/** Health states worth telling the table about (the system adds them as afflictions as damage builds up). */
+const HEALTH_STATUSES = ["injured", "incapacitated", "dead"];
+
+/**
+ * How hurt a character is, to notice changes: damage taken, and which of the health states it has.
+ * @param {Actor|null} actor
+ * @returns {{damage: number, statuses: string[]}}
+ */
+export function healthState(actor) {
+  return {
+    damage: int(actor?.system.characteristics?.health?.value),
+    statuses: HEALTH_STATUSES.filter(id => actor?.statuses?.has(id))
+  };
+}
+
 /**
  * The pill's summary of a character: name, level, health, stats and afflictions.
  * @param {Actor} actor
@@ -512,22 +527,45 @@ export const rollDeathSave = () => null;
  * @param {TokenDocument[]} [options.targets]  Targets picked without the map (the phone); otherwise the user's.
  * @param {number} [options.modifier]          A flat modifier for the roll.
  * @param {string[]} [options.disabled]        Boon sources the player switched off (boonSources ids).
- * @returns {Promise<unknown>}
+ * @returns {Promise<boolean|null>}  Whether the item was used (false when stopped first: no ammunition, castings or
+ *   uses left, an affliction, or the pre-use hook); null without such an item.
+ *
+ * When it uses the user's targets (none passed), it calls hooks so a module can look after them (the table's seats
+ * share the table user's): `awesome-vtt-core.preUseItem(actor, item)` before the targets are read (Hooks.call: a
+ * listener returning false cancels the use, with nothing spent), and `awesome-vtt-core.useItem(actor, item, used)`
+ * afterwards (also when the use was stopped or failed; `used` is true only when it went ahead).
  */
 export async function useItem(actor, itemId, mode = "normal", { targets, modifier = 0, disabled } = {}) {
   const item = actor?.items.get(itemId);
   if ( !item ) return null;
+  if ( !targets && (Hooks.call(`${CORE_ID}.preUseItem`, actor, item) === false) ) return false;
   const roll = {
     boons: boonsOf(mode), modifier: parseInt(modifier) || 0, targets: targets ?? targetTokens(),
     selection: selectionOf(disabled)
   };
-  switch ( item.type ) {
-    case "weapon": return attackWith(actor, item, roll);
-    case "spell": return castSpell(actor, item, roll);
-    case "talent": return useTalent(actor, item, roll);
-    case "item": return useGear(actor, item, roll);
-    default: return actor.rollItem?.(itemId);
+  const use = { weapon: attackWith, spell: castSpell, talent: useTalent, item: useGear }[item.type];
+  let used = false;
+  try {
+    if ( use ) used = (await use(actor, item, roll)) === true;
+    else {
+      await actor.rollItem?.(itemId);
+      used = true;
+    }
+    return used;
+  } finally {
+    if ( !targets ) Hooks.callAll(`${CORE_ID}.useItem`, actor, item, used);
   }
+}
+
+/**
+ * Warn that a use was stopped before anything was spent, and say so to useItem (ui.notifications.warn returns the
+ * notification, so its result can't tell).
+ * @param {string} message
+ * @returns {false}
+ */
+function stopped(message) {
+  ui.notifications.warn(message);
+  return false;
 }
 
 /**
@@ -539,22 +577,23 @@ export async function useItem(actor, itemId, mode = "normal", { targets, modifie
  * @param {number} root0.modifier
  * @param {Array<Token|TokenDocument>} root0.targets
  * @param {object} [root0.selection]
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>}  Whether it attacked.
  */
 async function attackWith(actor, item, { boons, modifier, targets, selection }) {
-  if ( blocked(actor, "action", item.system.action?.attack) ) return;
+  if ( blocked(actor, "action", item.system.action?.attack) ) return false;
   const consume = item.system.consume ?? {};
   let ammo = null;
   if ( consume.ammorequired ) {
     ammo = actor.items.get(consume.ammoitemid);
-    if ( !ammo ) return ui.notifications.warn(game.i18n.format("DL.WeaponNoAmmo", { weaponName: item.name }));
-    if ( !(ammo.system.quantity > 0) ) return ui.notifications.warn(game.i18n.format("DL.WeaponRunOutOfAmmo", { weaponName: item.name }));
+    if ( !ammo ) return stopped(game.i18n.format("DL.WeaponNoAmmo", { weaponName: item.name }));
+    if ( !(ammo.system.quantity > 0) ) return stopped(game.i18n.format("DL.WeaponRunOutOfAmmo", { weaponName: item.name }));
   }
   if ( targets.length ) {
     for ( const target of targets ) await actor.rollItemAttack(item, boons, modifier, target, selection);
   }
   else await actor.rollItemAttack(item, boons, modifier, null, selection);
   if ( ammo ) await ammo.update({ "system.quantity": Math.max(ammo.system.quantity - (int(consume.amount) || 1), 0) });
+  return true;
 }
 
 /**
@@ -566,21 +605,22 @@ async function attackWith(actor, item, { boons, modifier, targets, selection }) 
  * @param {number} root0.modifier
  * @param {Array<Token|TokenDocument>} root0.targets
  * @param {object} [root0.selection]
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>}  Whether it was cast.
  */
 async function castSpell(actor, item, { boons, modifier, targets, selection }) {
   const attack = item.system.action?.attack;
   const attacks = (item.system.spelltype === "Attack") && attack;
-  if ( attacks && blocked(actor, "attack", attack) ) return;
-  if ( !attacks && item.system.attribute && blocked(actor, "challenge", item.system.attribute) ) return;
+  if ( attacks && blocked(actor, "attack", attack) ) return false;
+  if ( !attacks && item.system.attribute && blocked(actor, "challenge", item.system.attribute) ) return false;
   const used = int(item.system.castings?.value);
   const max = int(item.system.castings?.max);
-  if ( max && (used >= max) ) return ui.notifications.warn(loc("DL.SpellMaxUsesReached"));
+  if ( max && (used >= max) ) return stopped(loc("DL.SpellMaxUsesReached"));
   await item.update({ "system.castings.value": String(used + 1) });
   if ( attacks && targets.length ) {
     for ( const target of targets ) await actor.useSpell(item, boons, modifier, [target], selection);
   }
   else await actor.useSpell(item, attacks ? boons : 0, attacks ? modifier : 0, [], attacks ? selection : undefined);
+  return true;
 }
 
 /**
@@ -591,15 +631,16 @@ async function castSpell(actor, item, { boons, modifier, targets, selection }) {
  * @param {number} root0.boons
  * @param {number} root0.modifier
  * @param {object} [root0.selection]
- * @returns {Promise<unknown>}
+ * @returns {Promise<boolean>}  Whether it was used.
  */
 async function useTalent(actor, item, { boons, modifier, selection }) {
-  if ( blocked(actor, "challenge", "strength") ) return;
+  if ( blocked(actor, "challenge", "strength") ) return false;
   const used = int(item.system.uses?.value);
   const max = int(item.system.uses?.max);
-  if ( max && (used >= max) ) return ui.notifications.warn(loc("DL.TalentMaxUsesReached"));
+  if ( max && (used >= max) ) return stopped(loc("DL.TalentMaxUsesReached"));
   const attacks = !!item.system.action?.attack;
-  return actor.useTalent(item, attacks ? boons : 0, attacks ? modifier : 0, attacks ? selection : undefined);
+  await actor.useTalent(item, attacks ? boons : 0, attacks ? modifier : 0, attacks ? selection : undefined);
+  return true;
 }
 
 /**
@@ -610,16 +651,20 @@ async function useTalent(actor, item, { boons, modifier, selection }) {
  * @param {number} root0.boons
  * @param {number} root0.modifier
  * @param {object} [root0.selection]
- * @returns {Promise<unknown>}
+ * @returns {Promise<boolean>}  Whether it was used.
  */
 async function useGear(actor, item, { boons, modifier, selection }) {
   // Incantations cast the spell they hold: the system's own path, with its dialog.
-  if ( (item.system.consumabletype === "I") && (item.system.contents?.length === 1) ) return actor.rollItem(item.id);
+  if ( (item.system.consumabletype === "I") && (item.system.contents?.length === 1) ) {
+    await actor.rollItem(item.id);
+    return true;
+  }
   let remove = false;
   if ( (item.system.quantity != null) && item.system.consumabletype ) {
     if ( item.system.quantity < 1 ) {
-      if ( item.system.autoDestroy ) return item.delete();
-      return ui.notifications.warn(loc("DL.ItemMaxUsesReached"));
+      if ( item.system.autoDestroy ) await item.delete();
+      else ui.notifications.warn(loc("DL.ItemMaxUsesReached"));
+      return false;
     }
     remove = (item.system.quantity === 1) && item.system.autoDestroy;
     await item.update({ "system.quantity": item.system.quantity - 1 });
@@ -627,6 +672,7 @@ async function useGear(actor, item, { boons, modifier, selection }) {
   const attacks = !!item.system.action?.attack;
   await actor.useItem(item, attacks ? boons : 0, attacks ? modifier : 0, attacks ? selection : undefined);
   if ( remove ) await item.delete();
+  return true;
 }
 
 /* -------------------------------------------- */

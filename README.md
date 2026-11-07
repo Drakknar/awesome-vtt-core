@@ -24,7 +24,9 @@ scripts/
                      conditions, exhaustion, concentration, effects, uses, slots, inventory), item descriptions,
                      and chat (All / Mine filter, which messages a log shows, sending)
   prompts.mjs        automation prompts (death saves, concentration, saves, GM requests, initiative) and their
-                     queue; answering one closes it on the player's other devices (the core's socket)
+                     queue; answering one closes it on the player's other devices (the core's socket); the
+                     active GM's client relays SotDL challenge cards whispered to the players' own users to
+                     the table screen (the core's socket, accepted from a GM only; a GM must be logged in)
   dice.mjs           the Dice panel (pool, formula, real or Foundry dice, roll), advantage modes and their
                      choice list, and the Physical dice default method
   panels.mjs         state and actions of the Compendium and Journal panels

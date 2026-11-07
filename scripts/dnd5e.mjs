@@ -456,6 +456,23 @@ export function openLevelUp(actor) {
   return actor.sheet?.render({ force: true });
 }
 
+/**
+ * How hurt a character is, to notice changes: damage taken (HP lost, as a rising number; temporary HP left out, since
+ * a rest also clears it), the HP maximum with temporary max HP (`effectiveMax`: when it drops, dnd5e lowers HP with
+ * it, which isn't damage; the caller counts only damage beyond the drop), and whether it is unconscious or dead.
+ * @param {Actor|null} actor
+ * @returns {{damage: number, effectiveMax: number, statuses: string[]}}
+ */
+export function healthState(actor) {
+  const hp = actor?.system.attributes?.hp ?? {};
+  const dead = CONFIG.specialStatusEffects?.DEFEATED ?? "dead";
+  return {
+    damage: -(Number(hp.value) || 0),
+    effectiveMax: Number(hp.effectiveMax) || 0,
+    statuses: ["unconscious", dead].filter(id => actor?.statuses?.has(id))
+  };
+}
+
 /** HP field modes: damage, healing, or temporary hit points (kept only if higher than the current, per the rules). */
 export const HP_MODES = ["damage", "heal", "temp"];
 
@@ -941,6 +958,12 @@ export const itemNeedsTargets = () => false;
 
 /** In dnd5e, chat cards take their targets from the user's (the phone's bridge); SotDL lists its buttons. */
 export const CARD_TARGET_BUTTONS = null;
+
+/**
+ * SotDL's "target on select" setting; dnd5e has none.
+ * @returns {boolean}
+ */
+export const targetOnSelect = () => false;
 
 /**
  * Does this activity act on specific tokens that must be targeted before use? Attacks and saves do, and activities
