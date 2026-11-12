@@ -6,8 +6,10 @@
   "system:demonlord:6.1.13": "done:2026-10-29",
   "system:demonlord:6.1.14": "done:2026-11-04",
   "system:dnd5e:6.0.6": "done:2026-10-11",
+  "system:dnd5e:6.1.0": "done:2026-11-12",
   "system:from:demonlord:6.1.12": "6.1.11",
   "system:from:demonlord:6.1.13": "6.1.12",
   "system:from:demonlord:6.1.14": "6.1.13",
-  "system:from:dnd5e:6.0.6": "6.0.5"
+  "system:from:dnd5e:6.0.6": "6.0.5",
+  "system:from:dnd5e:6.1.0": "6.0.6"
 }
