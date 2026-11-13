@@ -483,6 +483,12 @@ export const CARD_TARGET_BUTTONS = ".roll-damage, .apply-damage, .roll-healing, 
 const targetTokens = () => (targetOnSelect() ? (canvas?.tokens?.controlled ?? []) : [...game.user.targets]);
 
 /**
+ * Only dnd5e hides activities; SotDL items have none.
+ * @returns {false}
+ */
+export const useBlocked = () => false;
+
+/**
  * Does using this item ask for targets? (The phone's use dialog; the table uses the map's targets.) Weapons and
  * attack spells: the system's attack takes the target we pass. Talents and gear that attack read the user's targets
  * themselves, which the phone fills from the picked ones (its no-map token layer, see the phone's targets.mjs).
