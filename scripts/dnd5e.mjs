@@ -120,7 +120,7 @@ export function getSummary(actor) {
   const conditions = CONFIG.statusEffects
     .filter(e => conditionIds.has(e.id))
     .map(e => ({ id: e.id, label: loc(e.name), img: e.img, active: actor.statuses.has(e.id) }));
-  // dnd5e 6.1's antimagic status (set by an Antimagic region), shown while active so the player sees why magic
+  // The antimagic status of dnd5e 6.1 (set by an Antimagic region), shown while active so the player sees why magic
   // actions are gone. It belongs to the region, so it can't be toggled here.
   const antimagic = actor.statuses.has("antimagic") ? CONFIG.statusEffects.find(e => e.id === "antimagic") : null;
   if ( antimagic ) {

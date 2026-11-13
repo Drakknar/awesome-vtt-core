@@ -482,7 +482,10 @@ export const CARD_TARGET_BUTTONS = ".roll-damage, .apply-damage, .roll-healing, 
  */
 const targetTokens = () => (targetOnSelect() ? (canvas?.tokens?.controlled ?? []) : [...game.user.targets]);
 
-/** dnd5e only: SotDL items have no activities that can be hidden. */
+/**
+ * Only dnd5e hides activities; SotDL items have none.
+ * @returns {false}
+ */
 export const useBlocked = () => false;
 
 /**
