@@ -482,6 +482,9 @@ export const CARD_TARGET_BUTTONS = ".roll-damage, .apply-damage, .roll-healing, 
  */
 const targetTokens = () => (targetOnSelect() ? (canvas?.tokens?.controlled ?? []) : [...game.user.targets]);
 
+/** dnd5e only: SotDL items have no activities that can be hidden. */
+export const useBlocked = () => false;
+
 /**
  * Does using this item ask for targets? (The phone's use dialog; the table uses the map's targets.) Weapons and
  * attack spells: the system's attack takes the target we pass. Talents and gear that attack read the user's targets

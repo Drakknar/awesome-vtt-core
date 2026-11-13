@@ -7,7 +7,7 @@
 import {
   MAX_QUANTITY, MAX_CURRENCY, byName, signed, getToggleEffects, queueEffects, raceTolerant, waitFor, plainText,
   onRollResult as onRollResultFor,
-  hpAmount, changeQuantity, toggleEffect, rollNotice, transformHelpers
+  hpAmount, changeQuantity, toggleEffect, rollNotice, transformHelpers, activityIsLike
 } from "./common.mjs";
 
 // System-neutral helpers the shared code reaches through this adapter (see system.mjs).
@@ -117,6 +117,15 @@ export function getSummary(actor) {
   const max = hp.effectiveMax ?? hp.max ?? 0;
   const classes = Object.values(actor.classes ?? {}).map(c => `${c.name} ${c.system.levels}`).join(" / ");
   const conditionIds = new Set(Object.keys(CONFIG.DND5E.conditionTypes ?? {}));
+  const conditions = CONFIG.statusEffects
+    .filter(e => conditionIds.has(e.id))
+    .map(e => ({ id: e.id, label: loc(e.name), img: e.img, active: actor.statuses.has(e.id) }));
+  // dnd5e 6.1's antimagic status (set by an Antimagic region), shown while active so the player sees why magic
+  // actions are gone. It belongs to the region, so it can't be toggled here.
+  const antimagic = actor.statuses.has("antimagic") ? CONFIG.statusEffects.find(e => e.id === "antimagic") : null;
+  if ( antimagic ) {
+    conditions.push({ id: "antimagic", label: loc(antimagic.name), img: antimagic.img, active: true, locked: true });
+  }
   return {
     name: actor.name,
     img: actor.img,
@@ -137,9 +146,7 @@ export function getSummary(actor) {
     ],
     death: sys.attributes.death ?? { success: 0, failure: 0 },
     dying: (hp.value ?? 1) <= 0,
-    conditions: CONFIG.statusEffects
-      .filter(e => conditionIds.has(e.id))
-      .map(e => ({ id: e.id, label: loc(e.name), img: e.img, active: actor.statuses.has(e.id) }))
+    conditions
   };
 }
 
@@ -243,14 +250,14 @@ export function getActions(actor) {
   push(loc("AVTTC.Sheet.Weapons"), actor.items.filter(i => i.type === "weapon" && i.system.equipped));
 
   // Spells that can be cast now (see isSpellAvailable); the Spells tab lists all of them.
-  const spells = actor.items.filter(i => i.type === "spell" && isSpellAvailable(i) && i.system.activities?.size);
+  const spells = actor.items.filter(i => i.type === "spell" && isSpellAvailable(i) && hasUsableActivity(i));
   for ( const { level, label, slots } of spellLevels(actor) ) {
     push(label, spells.filter(s => s.system.level === level), { slots });
   }
   const pact = pactSlots(actor);
   if ( pact ) groups.push({ label: loc("AVTTC.Sheet.PactSlots"), items: [], slots: pact });
 
-  push(loc("AVTTC.Sheet.Features"), actor.items.filter(i => i.type === "feat" && i.system.activities?.size));
+  push(loc("AVTTC.Sheet.Features"), actor.items.filter(i => i.type === "feat" && hasUsableActivity(i)));
   push(loc("AVTTC.Sheet.Consumables"), actor.items.filter(i => i.type === "consumable"));
   return groups;
 }
@@ -299,7 +306,7 @@ export function getSpells(actor) {
       name: item.name,
       img: item.img,
       favorite: isFavorite(actor, item),
-      usable: isSpellAvailable(item) && !!s.activities?.size,
+      usable: isSpellAvailable(item) && hasUsableActivity(item),
       canPrepare: !!CONFIG.DND5E.spellcasting[s.method]?.prepares && (s.level > 0) && !always,
       prepared: s.prepared >= states.prepared.value,
       always,
@@ -426,6 +433,23 @@ export const rollDeathSave = (actor, mode) =>
  * @returns {Promise<object|undefined>|undefined}
  */
 export const useItem = (actor, itemId) => actor.items.get(itemId)?.use();
+
+/**
+ * Can one of the item's activities be used now? dnd5e hides activities in an antimagic area, on unattuned or
+ * unidentified items, riders, and outside their level range (`isHidden`, part of `canUse`); its own sheet then
+ * doesn't offer them, so neither do the action lists here.
+ * @param {Item} item
+ * @returns {boolean}
+ */
+const hasUsableActivity = item => !!item.system.activities?.some(a => a.canUse);
+
+/**
+ * Does the item have activities, none of which can be used now (see hasUsableActivity)? dnd5e's `Item#use` would
+ * then quietly post the item's card instead of using it, so the modules say why nothing happens.
+ * @param {Item|undefined} item
+ * @returns {boolean}
+ */
+export const useBlocked = item => !!item?.system.activities?.size && !hasUsableActivity(item);
 
 /* -------------------------------------------- */
 /*  Levelling up                                */
@@ -612,7 +636,7 @@ export function getInventory(actor) {
       equipped: !!s.equipped,
       attunable: ["required", "optional"].includes(s.attunement),
       attuned: !!s.attuned,
-      usable: !!s.activities?.size,
+      usable: hasUsableActivity(item),
       uses: s.uses?.max ? `${s.uses.value}/${s.uses.max}` : "",
       contents: item.type === "container"
         ? carried.filter(i => i.system.container === item.id).sort(byName).map(toEntry)
@@ -977,7 +1001,7 @@ export const targetOnSelect = () => false;
 export function needsTargets(activity, { areasNeedTargets = false } = {}) {
   const { affects, template } = activity.target ?? {};
   if ( template?.type ) return areasNeedTargets;
-  if ( ["attack", "save"].includes(activity.type) ) return true;
+  if ( activityIsLike(activity, "attack") || activityIsLike(activity, "save") ) return true;
   return TARGETED_TYPES.has(affects?.type);
 }
 

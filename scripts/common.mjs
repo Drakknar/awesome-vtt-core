@@ -23,6 +23,15 @@ export const byName = (a, b) => a.name.localeCompare(b.name);
  */
 export const signed = n => (n >= 0 ? `+${n}` : `${n}`);
 
+/**
+ * Is a dnd5e activity of this type, or declared "like" it (dnd5e 6.1 `isLike`, e.g. a module's own attack
+ * activity)? dnd5e 6.0 has no `isLike`, so there only the exact type counts.
+ * @param {Activity|null|undefined} activity
+ * @param {string} type
+ * @returns {boolean}
+ */
+export const activityIsLike = (activity, type) => activity?.isLike?.(type) ?? (activity?.type === type);
+
 const MAX_HP_INPUT = 999;
 
 /**

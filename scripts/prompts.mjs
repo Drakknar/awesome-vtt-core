@@ -1,5 +1,5 @@
 import sys from "./system.mjs";
-import { parseHTML, messageActor } from "./common.mjs";
+import { parseHTML, messageActor, activityIsLike } from "./common.mjs";
 
 /**
  * Automation prompts, shared by the table seats and the phone app: time-sensitive rolls offered to the player
@@ -275,7 +275,7 @@ function concentrationPrompts(message, mine) {
  */
 function savePrompts(message, mine) {
   const activity = message.getAssociatedActivity?.() ?? fromUuidQuiet(message.system?.activity?.uuid);
-  if ( activity?.type !== "save" ) return [];
+  if ( !activityIsLike(activity, "save") ) return [];
   const dc = activity.save?.dc?.value;
   const actors = unique((message.system.targets ?? []).map(t => fromUuidQuiet(t.actor))).filter(mine);
   return actors.map(actor => ({
