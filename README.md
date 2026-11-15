@@ -1,5 +1,7 @@
 # Awesome VTT – Core
 
+<img src="assets/icon.svg" alt="" width="96" align="right">
+
 A library module with the code shared by [Awesome VTT](../awesome-vtt) (table mode) and [Awesome VTT – Phone Companion](../awesome-vtt-mobile). It does nothing on its own. Foundry enables it when either of those modules is enabled, because both declare it as required.
 
 - **Targets:** Foundry VTT v14 and dnd5e 6.0.x (built against 6.0.5).
