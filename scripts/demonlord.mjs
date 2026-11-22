@@ -724,8 +724,9 @@ function collectBoonSources(actor, { kind = "attack", attribute, defense, item, 
       .filter(e => !e.disabled && !e.isSuppressed)
       .flatMap(e => e.changes.map((change, index) => ({ effect: e, change, index })))
       .filter(c => c.change.key === key);
-    // Only split additive, literal changes when they fully explain the prepared value.
-    const safe = changes.every(({ change }) => (Number(change.mode) === 2) && /^-?\d+$/.test(String(change.value)))
+    // Only split additive, literal changes when they fully explain the prepared value. The system checks the numeric
+    // `mode` (2); Foundry 14 changes have a string `type` ("add") instead, and reading `mode` warns until v16 drops it.
+    const safe = changes.every(({ change }) => (change.type === "add") && /^-?\d+$/.test(String(change.value)))
       && (changes.reduce((sum, { change }) => sum + int(change.value), 0) === total);
     if ( safe ) {
       for ( const { effect, change, index } of changes ) {
