@@ -921,8 +921,19 @@ export const changeExhaustion = () => null;
 /*  Initiative: fast and slow turns             */
 /* -------------------------------------------- */
 
+/**
+ * The actor's combatants: by the combatant's own actor id, or by its token's current actor. A transformed form's
+ * tokens are relinked to the form, but its combatants keep the original's `actorId` (checked live, 14.370 +
+ * demonlord 6.2.0), so only the token says they now belong to the form.
+ * @param {Actor|null} actor
+ * @param {Combat|null} [combat]
+ * @returns {Combatant[]}
+ */
+const combatantsOf = (actor, combat = game.combat) => (!actor ? []
+  : combat?.combatants.filter(c => (c.actorId === actor.id) || (c.actor?.id === actor.id)) ?? []);
+
 export const initiativeDue = (actor, combat = game.combat) =>
-  combat?.combatants.filter(c => (c.actorId === actor?.id) && (c.initiative === null) && !c.isDefeated) ?? [];
+  combatantsOf(actor, combat).filter(c => (c.initiative === null) && !c.isDefeated);
 
 /**
  * Fast or slow turn (default initiative mode), and whether the character may take a fast turn.
@@ -936,7 +947,11 @@ export function turnSpeed(actor) {
 
 /**
  * Choose a fast or slow turn. The system re-sets the initiative of the actor's combatants when its turn speed
- * changes; combatants still without one get it here, as its own fast / slow dialog would.
+ * changes, but only those whose `actorId` is this actor's, and only when the speed changed. So every combatant of
+ * the actor whose initiative doesn't match the chosen speed is set here: a transformed form's combatants (they keep
+ * the original's id), combatants left with the other actor's value by a transform or a revert (a new form starts with
+ * the creature's speed; the original keeps its own), and combatants still without one (as the system's own fast /
+ * slow dialog would). Setting the value the system's hook also sets is harmless.
  * @param {Actor|null} actor
  * @param {boolean} fast
  */
@@ -945,8 +960,10 @@ export async function setTurnSpeed(actor, fast) {
   fast = !!fast && !actor.system.maluses?.noFastTurn;
   if ( !!actor.system.fastturn !== fast ) await actor.update({ "system.fastturn": fast });
   const combat = game.combat;
-  for ( const c of initiativeDue(actor, combat) ) {
-    if ( c.isOwner ) await combat.setInitiative(c.id, combat.getInitiativeValue(c, fast));
+  for ( const c of combatantsOf(actor, combat) ) {
+    if ( !c.isOwner || c.isDefeated ) continue;
+    const value = combat.getInitiativeValue(c, fast);
+    if ( c.initiative !== value ) await combat.setInitiative(c.id, value);
   }
 }
 
